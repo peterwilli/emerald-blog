@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+.sparkle {
+  background: radial-gradient(circle, rgba(80, 200, 120, 0.2) 0%, transparent 80%);
+  background-size: 400% 400%;
+  animation: shine 10s linear infinite;
+}
+
+.emerald-glow {
+  box-shadow: 0 0 5px #50C878, 0 0 10px #50C878, 0 0 20px #50C878;
+}
+
+.logo-glow {
+  filter: drop-shadow(0 0 2px #50C878) drop-shadow(0 0 5px #50C878);
+}
+
+.glass {
+  background: rgba(26, 26, 26, 0.6);
+  border: 1px solid rgba(80, 200, 120, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.social-icon {
+  transition: all 0.3s ease;
+}
+
+.social-icon:hover {
+  transform: scale(1.1) rotate(5deg);
+  filter: drop-shadow(0 0 5px #50C878);
+}
+
+.post-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(80, 200, 120, 0.3);
+}
