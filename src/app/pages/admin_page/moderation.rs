@@ -10,7 +10,7 @@ use std::collections::HashSet;
 #[cfg(feature = "ssr")]
 use crate::app::{
     client::{OWNER_PUBKEY, get_nostr_client},
-    ssr_posts::POSTS_LIST,
+    post_sync::POSTS_LIST,
     utils::to_date_string,
 };
 

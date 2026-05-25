@@ -6,15 +6,11 @@
   "source": "src/index.js",
   "main": "../public/emerald-core.js",
   "scripts": {
-    "generate:nostr-relays": "node scripts/generate-nostr-relays.mjs",
-    "prebuild": "node scripts/generate-nostr-relays.mjs",
     "build": "parcel build --no-cache src/index.js",
-    "prewatch": "node scripts/generate-nostr-relays.mjs",
     "watch": "parcel watch src/index.js --dist-dir ../public"
   },
   "dependencies": {
-    "@emerald-show/emerald-background": "workspace:*",
-    "nostr-tools": "^2.23.5"
+    "@emerald-show/emerald-background": "workspace:*"
   },
   "devDependencies": {
     "@parcel/core": "2.15.2",

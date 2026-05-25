@@ -19,6 +19,9 @@ use std::{collections::HashMap, time::Duration};
 #[cfg(feature = "ssr")]
 use crate::app::client::{OWNER_PUBKEY, get_anonymous_comment_client, get_nostr_client};
 
+#[cfg(feature = "hydrate")]
+const COMMENT_REFRESH_INTERVAL_MS: u64 = 15_000;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ApprovedComment {
     pub id: String,
@@ -26,6 +29,7 @@ pub struct ApprovedComment {
     pub display_name: Option<String>,
     pub content: String,
     pub created_at: String,
+    pub created_at_secs: u64,
 }
 
 #[component]
@@ -33,7 +37,8 @@ pub fn PostPage() -> impl IntoView {
     let params = use_params_map();
     let route_slug = params.read_untracked().get("slug").unwrap_or_default();
     let state = use_context::<AppState>().unwrap();
-    let posts = state.posts;
+    let posts = state.posts.clone();
+    let live_posts = state.live_posts.clone();
 
     view! {
         <div class="glass rounded-xl p-6 transition-all duration-300 post-card">
@@ -43,8 +48,14 @@ pub fn PostPage() -> impl IntoView {
                 {move || {
                     posts
                         .get()
-                        .map(|posts| {
-                            let posts = posts.read();
+                        .map(|seeded_posts| {
+                            let current_posts = live_posts.get();
+                            let posts = if current_posts.is_empty() {
+                                seeded_posts
+                            } else {
+                                current_posts
+                            };
+
                             posts
                                 .iter()
                                 .find(|&post| {
@@ -119,40 +130,30 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
     let comments_post_id = post_id.clone();
     let comments =
         OnceResource::new(async move { fetch_approved_comments(comments_post_id).await });
+    let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
+    #[cfg(feature = "hydrate")]
+    let refresh_started = RwSignal::new(false);
 
     view! {
         <section class="post-comments">
             <h2>"Comments"</h2>
-            <CommentComposer post_id=post_id />
+            <CommentComposer post_id=post_id.clone() />
             <Suspense fallback=move || view! { <p class="post-comments-muted">"Loading comments..."</p> }>
                 {move || {
                     comments
                         .get()
                         .map(|result| match result {
-                            Ok(comments) if comments.is_empty() => {
-                                view! { <p class="post-comments-muted">"No approved comments yet."</p> }.into_any()
-                            }
                             Ok(comments) => {
+                                #[cfg(feature = "hydrate")]
+                                start_comment_refresh(
+                                    post_id.clone(),
+                                    live_comments,
+                                    refresh_started,
+                                    comments.iter().map(|comment| comment.id.clone()).collect(),
+                                );
+
                                 view! {
-                                    <div class="post-comment-list">
-                                        <For
-                                            each=move || comments.clone()
-                                            key=|comment| comment.id.clone()
-                                            children=move |comment| {
-                                                view! {
-                                                    <article class="post-comment">
-                                                        <div class="post-comment-meta">
-                                                            <span>{comment.created_at}</span>
-                                                            <span>
-                                                                {comment.display_name.unwrap_or(comment.author)}
-                                                            </span>
-                                                        </div>
-                                                        <p>{comment.content}</p>
-                                                    </article>
-                                                }
-                                            }
-                                        />
-                                    </div>
+                                    <CommentList live_comments=live_comments seeded_comments=comments />
                                 }.into_any()
                             }
                             Err(error) => {
@@ -169,7 +170,111 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
     }
 }
 
-#[island]
+#[component]
+fn CommentList(
+    live_comments: RwSignal<Vec<ApprovedComment>>,
+    seeded_comments: Vec<ApprovedComment>,
+) -> impl IntoView {
+    let seeded_comments = RwSignal::new(seeded_comments);
+
+    view! {
+        <Show
+            when=move || {
+                !live_comments.read().is_empty() || !seeded_comments.read().is_empty()
+            }
+            fallback=move || view! { <p class="post-comments-muted">"No approved comments yet."</p> }
+        >
+            <div class="post-comment-list">
+                <For
+                    each=move || {
+                        live_comments
+                            .get()
+                            .into_iter()
+                            .chain(seeded_comments.get())
+                            .collect::<Vec<_>>()
+                    }
+                    key=|comment| comment.id.clone()
+                    children=move |comment| view! { <CommentItem comment=comment /> }
+                />
+            </div>
+        </Show>
+    }
+}
+
+#[component]
+fn CommentItem(comment: ApprovedComment) -> impl IntoView {
+    view! {
+        <article class="post-comment">
+            <div class="post-comment-meta">
+                <span>{comment.created_at}</span>
+                <span>{comment.display_name.unwrap_or(comment.author)}</span>
+            </div>
+            <p>{comment.content}</p>
+        </article>
+    }
+}
+
+#[cfg(feature = "hydrate")]
+fn start_comment_refresh(
+    post_id: String,
+    live_comments: RwSignal<Vec<ApprovedComment>>,
+    refresh_started: RwSignal<bool>,
+    seeded_comment_ids: Vec<String>,
+) {
+    use std::time::Duration;
+
+    if refresh_started.get_untracked() {
+        return;
+    }
+    refresh_started.set(true);
+
+    refresh_approved_comments(post_id.clone(), live_comments, seeded_comment_ids.clone());
+
+    if let Ok(interval) = set_interval_with_handle(
+        move || {
+            refresh_approved_comments(post_id.clone(), live_comments, seeded_comment_ids.clone());
+        },
+        Duration::from_millis(COMMENT_REFRESH_INTERVAL_MS),
+    ) {
+        on_cleanup(move || interval.clear());
+    }
+}
+
+#[cfg(feature = "hydrate")]
+fn refresh_approved_comments(
+    post_id: String,
+    live_comments: RwSignal<Vec<ApprovedComment>>,
+    seeded_comment_ids: Vec<String>,
+) {
+    leptos::task::spawn_local(async move {
+        let Ok(comments) = fetch_approved_comments(post_id).await else {
+            return;
+        };
+
+        live_comments.update(|live_comments| {
+            for comment in comments {
+                if seeded_comment_ids.contains(&comment.id)
+                    || live_comments
+                        .iter()
+                        .any(|existing| existing.id == comment.id)
+                {
+                    continue;
+                }
+
+                live_comments.push(comment);
+            }
+
+            live_comments.sort_by(|left, right| {
+                right
+                    .created_at_secs
+                    .cmp(&left.created_at_secs)
+                    .then_with(|| right.id.cmp(&left.id))
+            });
+        });
+    });
+}
+
+#[component]
 fn CommentComposer(post_id: String) -> impl IntoView {
     let (content, set_content) = signal(String::new());
     let (display_name, set_display_name) = signal(String::new());
@@ -346,6 +451,7 @@ fn approved_comment_from_comment(
         display_name: parsed.display_name.or(profile_name),
         content: parsed.content,
         created_at: to_date_string(comment.created_at),
+        created_at_secs: comment.created_at.as_u64(),
     }
 }
 

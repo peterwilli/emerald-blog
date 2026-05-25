@@ -9,7 +9,7 @@ The app is an SSR/hydrated blog for Emerald Show. Blog content comes from Nostr 
 - `src/lib.rs` exposes the shared app crate and the WASM hydration entry point behind the `hydrate` feature.
 - `src/app/mod.rs` defines `shell`, `App`, routes, the server function `seed_posts`, and the global posts context.
 - `src/app/client.rs` owns the Nostr public key, relay list, generated signer, and singleton client.
-- `src/app/ssr_posts.rs` fetches authors/posts into the global `POSTS_LIST`.
+- `src/app/post_sync.rs` seeds SSR posts and keeps server/client post sync behavior together.
 - Routes are `/`, `/blog`, and `/post/:slug`. Post links use `slug::slugify(&post.title)`.
 
 ## Project Structure & Module Organization

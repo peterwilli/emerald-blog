@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_router::components::A;
 use libnostrblog::objects::post::Post;
 
 use crate::app::utils::{post_slug, to_date_string};
@@ -8,9 +9,9 @@ pub fn PostCard(post: Post<'static>) -> impl IntoView {
     let href = format!("/post/{}", post_slug(&post));
 
     view! {
-        <a
+        <A
             href=href
-            class="glass rounded-xl transition-all duration-300 post-card post-card-link overflow-hidden block group"
+            attr:class="glass rounded-xl transition-all duration-300 post-card post-card-link overflow-hidden block group"
         >
             {post
                 .featured_image
@@ -53,6 +54,6 @@ pub fn PostCard(post: Post<'static>) -> impl IntoView {
                     </svg>
                 </span>
             </div>
-        </a>
+        </A>
     }
 }

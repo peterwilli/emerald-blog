@@ -8,13 +8,10 @@ test("homepage has title and heading text", async ({ page }) => {
   await expect(page.getByText("Welcome to the Emerald Show")).toBeVisible();
 });
 
-test("admin editor hydrates as an island", async ({ page }) => {
+test("admin editor hydrates with dynamic routing", async ({ page }) => {
   await page.goto("http://localhost:3000/admin/post");
 
-  await expect(page.locator("leptos-island")).toHaveAttribute(
-    "data-component",
-    /AdminPostPage/,
-  );
+  await expect(page.locator("leptos-island")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Display View" }).click();
   await expect(

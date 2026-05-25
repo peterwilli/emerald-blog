@@ -1,18 +1,19 @@
 use leptos::prelude::*;
+use leptos_router::components::A;
 
 #[component]
-pub fn HeaderItem<'a>(link: &'a str, title: &'a str) -> impl IntoView {
+pub fn HeaderItem(link: &'static str, title: &'static str) -> impl IntoView {
     view! {
-        <a
+        <A
             href=link
-            class="relative group px-3 py-2 text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:text-gold after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-emerald after:to-gold after:scale-x-0 after:origin-bottom-right after:transition-transform after:duration-300 after:hover:origin-bottom-left after:hover:scale-x-100"
+            attr:class="relative group px-3 py-2 text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:text-gold after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-emerald after:to-gold after:scale-x-0 after:origin-bottom-right after:transition-transform after:duration-300 after:hover:origin-bottom-left after:hover:scale-x-100"
         >
             {title}
-        </a>
+        </A>
     }
 }
 
-#[island]
+#[component]
 pub fn Header() -> impl IntoView {
     let (menu_open, set_menu_open) = signal(false);
     let toggle_menu = move |_| set_menu_open.update(|open| *open = !*open);
@@ -141,20 +142,20 @@ pub fn Header() -> impl IntoView {
                             }
                         }
                     >
-                        <a
+                        <A
                             href="/"
                             on:click=close_menu
-                            class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
                         >
                             Home
-                        </a>
-                        <a
+                        </A>
+                        <A
                             href="/blog"
                             on:click=close_menu
-                            class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
                         >
                             Blog
-                        </a>
+                        </A>
                     </div>
                 </div>
             </nav>

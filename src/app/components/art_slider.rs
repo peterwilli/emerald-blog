@@ -36,7 +36,7 @@ impl ArtSlide {
 #[component]
 pub fn ArtSlider() -> impl IntoView {
     let state = use_context::<AppState>().unwrap();
-    let posts = state.posts;
+    let posts = state.posts.clone();
 
     view! {
         <Suspense fallback=move || {
@@ -47,21 +47,20 @@ pub fn ArtSlider() -> impl IntoView {
                     .get()
                     .map(|posts| {
                         let slides = posts
-                            .read()
                             .iter()
                             .filter(|post| is_dream_art_post(post))
                             .filter_map(ArtSlide::from_post)
                             .collect::<Vec<_>>();
 
-                        view! { <ArtSliderIsland slides=slides /> }
+                        view! { <ArtSliderView slides=slides /> }
                     })
             }}
         </Suspense>
     }
 }
 
-#[island]
-fn ArtSliderIsland(slides: Vec<ArtSlide>) -> impl IntoView {
+#[component]
+fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
     if slides.is_empty() {
         return ().into_any();
     }

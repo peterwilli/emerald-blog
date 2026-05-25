@@ -17,9 +17,6 @@ importers:
       '@emerald-show/emerald-background':
         specifier: workspace:*
         version: link:../packages/emerald-background
-      nostr-tools:
-        specifier: ^2.23.5
-        version: 2.23.5
     devDependencies:
       '@parcel/core':
         specifier: 2.15.2
@@ -114,18 +111,6 @@ packages:
     resolution: {integrity: sha512-x0fWaQtYp4E6sktbsdAqnehxDgEc/VwM7uLsRCYWaiGu0ykYdZPiS8zCWdnjHwyiumousxfBm4SO31eXqwEZhQ==}
     cpu: [x64]
     os: [win32]
-
-  '@noble/ciphers@2.1.1':
-    resolution: {integrity: sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw==}
-    engines: {node: '>= 20.19.0'}
-
-  '@noble/curves@2.0.1':
-    resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
-    engines: {node: '>= 20.19.0'}
-
-  '@noble/hashes@2.0.1':
-    resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
-    engines: {node: '>= 20.19.0'}
 
   '@parcel/bundler-default@2.15.2':
     resolution: {integrity: sha512-k0psV7OZYs1g6jcJweBjINVZaVTcfFr6PuCQr28biZ85qbc70f5pWzCzY963+dF3XO/QwTzDABZsJUiDf5jPfQ==}
@@ -517,15 +502,6 @@ packages:
     peerDependencies:
       '@parcel/core': ^2.15.2
 
-  '@scure/base@2.0.0':
-    resolution: {integrity: sha512-3E1kpuZginKkek01ovG8krQ0Z44E3DHPjc5S2rjJw9lZn3KSQOs8S7wqikF/AH7iRanHypj85uGyxk0XAyC37w==}
-
-  '@scure/bip32@2.0.1':
-    resolution: {integrity: sha512-4Md1NI5BzoVP+bhyJaY3K6yMesEFzNS1sE/cP+9nuvE7p/b0kx9XbpDHHFl8dHtufcbdHRUUQdRqLIPHN/s7yA==}
-
-  '@scure/bip39@2.0.1':
-    resolution: {integrity: sha512-PsxdFj/d2AcJcZDX1FXN3dDgitDDTmwf78rKZq1a6c1P1Nan1X/Sxc7667zU3U+AN60g7SxxP0YCVw2H/hBycg==}
-
   '@swc/core-darwin-arm64@1.15.40':
     resolution: {integrity: sha512-PaYyclfmQ++77D8ityYvmmVzHv9aG8ROwt2GfG6/ccloy4Hgf80qtOnzb9VYvPsUT7Ty1uhuDRhv3XYpf62qhQ==}
     engines: {node: '>=10'}
@@ -820,17 +796,6 @@ packages:
     resolution: {integrity: sha512-GYVXHE2KnrzAfsAjl4uP++evGFCrAU1jta4ubEjIG7YWt/64Gqv66a30yKwWczVjA6j3bM4nBwH7Pk1JmDHaxQ==}
     engines: {node: '>=18'}
 
-  nostr-tools@2.23.5:
-    resolution: {integrity: sha512-Fa7ZlUdjfUW1P4E7H3yBexhOHYi18XNyvd2n7eNHkYR085xADX6Y8V8Vm7nT/XQajaFOBrptXmVIGkJ2E4vfVw==}
-    peerDependencies:
-      typescript: '>=5.0.0'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
-  nostr-wasm@0.1.0:
-    resolution: {integrity: sha512-78BTryCLcLYv96ONU8Ws3Q1JzjlAt+43pWQhIl86xZmWeegYCNLPml7yQ+gG3vR6V5h4XGj+TxO+SS5dsThQIA==}
-
   nullthrows@1.1.1:
     resolution: {integrity: sha512-2vPPEi+Z7WqML2jZYddDIfy5Dqb0r2fze2zTxNNknZaFpVHU3mFB3R+DWeJWGVx0ecvttSGlJTI+WG+8Z4cDWw==}
 
@@ -952,14 +917,6 @@ snapshots:
 
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
-
-  '@noble/ciphers@2.1.1': {}
-
-  '@noble/curves@2.0.1':
-    dependencies:
-      '@noble/hashes': 2.0.1
-
-  '@noble/hashes@2.0.1': {}
 
   '@parcel/bundler-default@2.15.2(@parcel/core@2.15.2(@swc/helpers@0.5.21))':
     dependencies:
@@ -1625,19 +1582,6 @@ snapshots:
     transitivePeerDependencies:
       - napi-wasm
 
-  '@scure/base@2.0.0': {}
-
-  '@scure/bip32@2.0.1':
-    dependencies:
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@scure/base': 2.0.0
-
-  '@scure/bip39@2.0.1':
-    dependencies:
-      '@noble/hashes': 2.0.1
-      '@scure/base': 2.0.0
-
   '@swc/core-darwin-arm64@1.15.40':
     optional: true
 
@@ -1866,18 +1810,6 @@ snapshots:
     optional: true
 
   node-releases@2.0.46: {}
-
-  nostr-tools@2.23.5:
-    dependencies:
-      '@noble/ciphers': 2.1.1
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@scure/base': 2.0.0
-      '@scure/bip32': 2.0.1
-      '@scure/bip39': 2.0.1
-      nostr-wasm: 0.1.0
-
-  nostr-wasm@0.1.0: {}
 
   nullthrows@1.1.1: {}
 

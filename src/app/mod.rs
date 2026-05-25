@@ -2,7 +2,7 @@ use layout::header::Header;
 use leptos::prelude::*;
 use leptos_meta::{MetaTags, provide_meta_context};
 use leptos_router::{
-    StaticSegment,
+    SsrMode, StaticSegment,
     components::{Route, Router, Routes},
     path,
 };
@@ -13,13 +13,12 @@ pub mod layout;
 pub mod markdown;
 pub mod nostr_browser;
 pub mod pages;
-pub mod ssr_posts;
+pub mod post_sync;
 pub mod utils;
 use pages::{
     admin_page::AdminPostPage, blog_page::BlogPage, home_page::HomePage, post_page::PostPage,
 };
-#[cfg(feature = "ssr")]
-use ssr_posts::POSTS_LIST;
+use post_sync::{PostsSync, seed_posts};
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -37,7 +36,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <AutoReload options=options.clone() />
                 <script type="module" src="/emerald-core.js"></script>
-                <HydrationScripts options islands=true />
+                <HydrationScripts options />
                 <MetaTags />
             </head>
             <body>
@@ -47,14 +46,28 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct AppState {
-    pub posts: OnceResource<RwSignal<Vec<Post<'static>>>>,
+    pub posts: ArcOnceResource<Vec<Post<'static>>>,
+    pub live_posts: ArcRwSignal<Vec<Post<'static>>>,
+    #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
+    client_post_sync_started: ArcRwSignal<bool>,
 }
 
-#[server]
-pub async fn seed_posts() -> Result<Vec<Post<'static>>, ServerFnError> {
-    Ok(POSTS_LIST.read().clone())
+impl AppState {
+    pub fn merge_posts(&self, incoming_posts: Vec<Post<'static>>) {
+        self.live_posts.update(|posts| {
+            for post in incoming_posts {
+                if posts.iter().any(|existing| existing.id == post.id) {
+                    continue;
+                }
+
+                posts.push(post);
+            }
+
+            posts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        });
+    }
 }
 
 #[component]
@@ -64,17 +77,21 @@ pub fn App() -> impl IntoView {
 
     // Providing global posts context
     let app_state = AppState {
-        posts: OnceResource::new(async { RwSignal::new(seed_posts().await.unwrap()) }),
+        posts: ArcOnceResource::new(async { seed_posts().await.unwrap_or_default() }),
+        live_posts: ArcRwSignal::new(Vec::new()),
+        #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
+        client_post_sync_started: ArcRwSignal::new(false),
     };
     provide_context(app_state);
 
     view! {
         <Router>
+            <PostsSync />
             <Header />
             <main class="relative z-10 container mx-auto px-4 py-8 max-w-8xl">
                 <Routes fallback=|| "Not found.">
                     <Route path=StaticSegment("") view=HomePage />
-                    <Route path=path!("/post/:slug") view=PostPage />
+                    <Route path=path!("/post/:slug") view=PostPage ssr=SsrMode::Async />
                     <Route path=path!("blog") view=BlogPage />
                     <Route path=path!("/admin/post") view=AdminPostPage />
                 </Routes>
@@ -82,12 +99,12 @@ pub fn App() -> impl IntoView {
                     <p class="site-copyright">
                         "© " <span id="copyright-year">"2026"</span> " Peter \"Emerald\" Willemsen"
                         <br />
-                        <a
-                            class="text-sm font-medium text-white/85 drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-colors hover:text-gold"
+                        <leptos_router::components::A
+                            attr:class="text-sm font-medium text-white/85 drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-colors hover:text-gold"
                             href="/admin/post"
                         >
                             Admin
-                        </a>
+                        </leptos_router::components::A>
 
                     </p>
                     <div class="emerald-badge-rack" aria-label="Site badges">

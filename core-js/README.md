@@ -3,15 +3,10 @@
 Browser JavaScript bundle for Emerald Show.
 
 It imports `@emerald-show/emerald-background`, initializes the emerald background,
-and exposes Nostr publishing helpers for Rust/WASM callers:
+and exposes `window.EmeraldBlogCore.initEmeraldBackground`.
 
-```js
-window.EmeraldBlogCore.publishNostrPost(draft)
-window.EmeraldBlogCore.publishComment(postId, content)
-window.EmeraldBlogCore.publishCommentApproval(commentId)
-window.EmeraldBlogCore.publishPostDeletion(postId, reason, expectedAuthor)
-window.EmeraldBlogCore.hasNostrSigner()
-```
+Nostr publishing is handled by the hydrated Rust/WASM app. The JavaScript bundle
+only uses `window.nostr` indirectly through Rust NIP-07 interop.
 
 Build from the repository root:
 

@@ -9,7 +9,6 @@ pub static OWNER_PUBKEY: PublicKey = PublicKey::from_byte_array(hex!(
 static NOSTRL_CLIENT: OnceCell<Client> = OnceCell::const_new();
 static ANONYMOUS_COMMENT_CLIENT: OnceCell<Client> = OnceCell::const_new();
 pub const NOSTR_RELAYS: &[&str] = &["wss://nos.lol", "wss://nostr.emerald.show"];
-const ANONYMOUS_COMMENT_RELAYS: &[&str] = &["wss://nos.lol", "wss://relay.nostr.band"];
 
 pub async fn get_nostr_client() -> &'static Client {
     NOSTRL_CLIENT
@@ -48,7 +47,7 @@ pub async fn get_anonymous_comment_client() -> &'static Client {
                 .signer(keys)
                 .build();
 
-            for relay in ANONYMOUS_COMMENT_RELAYS {
+            for relay in NOSTR_RELAYS {
                 client.add_relay(*relay).await.unwrap();
             }
 

@@ -4,7 +4,7 @@ use libnostrblog::ToBech32;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ssr")]
-use crate::app::{ssr_posts::POSTS_LIST, utils::to_date_string};
+use crate::app::{post_sync::POSTS_LIST, utils::to_date_string};
 
 use crate::app::nostr_browser as nostr;
 

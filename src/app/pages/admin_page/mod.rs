@@ -21,7 +21,7 @@ enum AdminTab {
     Delete,
 }
 
-#[island]
+#[component]
 pub fn AdminPostPage() -> impl IntoView {
     let (tab, set_tab) = signal(AdminTab::Post);
     let (posting, set_posting) = signal(false);
