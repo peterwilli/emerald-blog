@@ -2,11 +2,14 @@
 #[tokio::main]
 async fn main() {
     use axum::Router;
-    use emerald_blog_v3::app::{ssr_posts::poll_posts, *};
-    use leptos::logging::log;
+    use emerald_blog_v3::app::{ssr_posts::fetch_posts, *};
     use leptos::prelude::*;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use tokio::task::LocalSet;
+    use tracing::{debug, info};
+    use tracing_subscriber::{EnvFilter, fmt};
+
+    fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
     let conf = get_configuration(None).unwrap();
     let addr = conf.leptos_options.site_addr;
@@ -14,15 +17,16 @@ async fn main() {
 
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
+    debug!("generated route list");
 
     // SSR Posts
-    println!("Polling posts...");
-    // LocalSet::new()
-    //     .run_until(async move {
-    //         poll_posts().await;
-    //     })
-    //     .await;
-    println!("Polling done...");
+    info!("fetching posts");
+    LocalSet::new()
+        .run_until(async move {
+            fetch_posts().await;
+        })
+        .await;
+    info!("finished fetching posts");
 
     let app = Router::new()
         .leptos_routes_with_context(&leptos_options, routes, move || {}, {
@@ -34,7 +38,7 @@ async fn main() {
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
-    log!("listening on http://{}", &addr);
+    info!("listening on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app.into_make_service())
         .await

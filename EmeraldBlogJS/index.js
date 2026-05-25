@@ -22,10 +22,73 @@ let frontMostCrystal = null;
 
 let bloomPass = null;
 const crystals = [];
-const postprocessing = {
-  enabled: true,
-};
+const prefersReducedMotion = window.matchMedia(
+  "(prefers-reduced-motion: reduce)",
+).matches;
+const isSmallScreen = window.matchMedia("(max-width: 768px)").matches;
+const isLowPowerDevice =
+  prefersReducedMotion ||
+  isSmallScreen ||
+  (navigator.hardwareConcurrency ?? 8) <= 4;
+const targetFps = prefersReducedMotion ? 12 : isLowPowerDevice ? 24 : 30;
+const frameInterval = 1 / targetFps;
+const maxPixelRatio = isLowPowerDevice ? 1 : 1.5;
+const crystalsPerLayer = isLowPowerDevice ? 5 : 8;
+const bounceCount = isLowPowerDevice ? 2 : 3;
+const useBokeh = !prefersReducedMotion && !isSmallScreen;
+let frameAccumulator = 0;
+let isVisible = true;
+let isInViewport = true;
+
+const copyrightYear = document.querySelector("#copyright-year");
+if (copyrightYear) {
+  copyrightYear.textContent = new Date().getFullYear().toString();
+}
+
 init();
+
+function viewportWidth() {
+  return container?.clientWidth || window.innerWidth;
+}
+
+function viewportHeight() {
+  return container?.clientHeight || window.innerHeight;
+}
+
+function renderPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, maxPixelRatio);
+}
+
+function renderResolution() {
+  const ratio = renderPixelRatio();
+  return {
+    width: Math.max(1, Math.floor(viewportWidth() * ratio)),
+    height: Math.max(1, Math.floor(viewportHeight() * ratio)),
+  };
+}
+
+function shouldAnimate() {
+  return isVisible && isInViewport;
+}
+
+function updateAnimationLoop() {
+  renderer.setAnimationLoop(shouldAnimate() ? animate : null);
+  if (shouldAnimate()) {
+    frameAccumulator = 0;
+    clock.start();
+    render();
+  }
+}
+
+function updateMaterialResolutions() {
+  const resolution = renderResolution();
+  crystals.forEach((crystal) => {
+    crystal.mesh.material.uniforms.resolution.value.set(
+      resolution.width,
+      resolution.height,
+    );
+  });
+}
 
 function getFrustumWorldSize(camera, depth = 1000) {
   const fov = camera.fov * (Math.PI / 180); // convert to radians
@@ -36,9 +99,12 @@ function getFrustumWorldSize(camera, depth = 1000) {
 
 function init() {
   container = document.querySelector(".emerald-bg");
+  if (!container) {
+    return;
+  }
   camera = new THREE.PerspectiveCamera(
     70,
-    window.innerWidth / window.innerHeight,
+    viewportWidth() / viewportHeight(),
     1,
     3000,
   );
@@ -46,10 +112,12 @@ function init() {
   camera.position.z = 450;
   scene = new THREE.Scene();
   scene.add(camera);
-  renderer = new THREE.WebGLRenderer();
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setAnimationLoop(animate);
+  renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    powerPreference: "low-power",
+  });
+  renderer.setPixelRatio(renderPixelRatio());
+  renderer.setSize(viewportWidth(), viewportHeight());
   renderer.autoClear = false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
@@ -57,10 +125,10 @@ function init() {
   const renderScene = new RenderPass(scene, camera);
 
   bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    1.0,
-    0.9,
-    0.6,
+    new THREE.Vector2(viewportWidth(), viewportHeight()),
+    isLowPowerDevice ? 0.45 : 0.8,
+    0.8,
+    0.65,
   );
   bokehPass = new BokehPass(scene, camera, {
     focus: 30,
@@ -77,13 +145,16 @@ function init() {
   };
 
   const renderTarget = new THREE.WebGLRenderTarget(
-    window.innerWidth,
-    window.innerHeight,
+    viewportWidth(),
+    viewportHeight(),
     parameters,
   );
   composer = new EffectComposer(renderer, renderTarget);
+  composer.setPixelRatio(renderPixelRatio());
   composer.addPass(renderScene);
-  composer.addPass(bokehPass);
+  if (useBokeh) {
+    composer.addPass(bokehPass);
+  }
   composer.addPass(bloomPass);
   composer.addPass(outputPass);
 
@@ -235,22 +306,34 @@ function init() {
         diamond = child;
       }
     });
+    if (!diamond) {
+      return;
+    }
+
+    const diamondGeometry = diamond.geometry;
+    const boundsTree = new MeshBVH(diamondGeometry.toNonIndexed(), {
+      lazyGeneration: false,
+      strategy: SAH,
+    });
+    const collider = new THREE.Mesh(diamondGeometry);
+    collider.visible = false;
+    collider.boundsTree = boundsTree;
+
     const rotSpeed = () => {
       return Math.random() * 0.005 - 0.0025;
     };
     const colors = [new THREE.Color(1, 1, 1), new THREE.Color(1, 1, 3)];
     for (let layer = 0; layer < 3; layer++) {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < crystalsPerLayer; i++) {
         const color = colors[Math.round(Math.random() * (colors.length - 1))];
         const ior = 2.4;
-        const clientWidth = window.innerWidth;
-        const clientHeight = window.innerHeight;
+        const resolution = renderResolution();
 
         const material = new THREE.ShaderMaterial({
           uniforms: {
             envMap: { value: textureCube },
             bvh: { value: new MeshBVHUniformStruct() },
-            bounces: { value: 3 },
+            bounces: { value: bounceCount },
             color: { value: color },
             ior: { value: ior },
             correctMips: { value: true },
@@ -258,7 +341,9 @@ function init() {
             viewMatrixInv: { value: camera.matrixWorld },
             chromaticAberration: { value: false },
             aberrationStrength: { value: 0.01 },
-            resolution: { value: new THREE.Vector2(clientWidth, clientHeight) },
+            resolution: {
+              value: new THREE.Vector2(resolution.width, resolution.height),
+            },
           },
           vertexShader: /*glsl*/ `
             varying vec3 vWorldPosition;
@@ -345,22 +430,7 @@ function init() {
             `,
         });
 
-        const mergedGeometry = diamond.geometry;
-        mergedGeometry.boundsTree = new MeshBVH(mergedGeometry.toNonIndexed(), {
-          lazyGeneration: false,
-          strategy: SAH,
-        });
-        const collider = new THREE.Mesh(mergedGeometry);
-        collider.material.wireframe = true;
-        collider.material.opacity = 0.5;
-        collider.material.transparent = true;
-        collider.visible = false;
-        collider.boundsTree = mergedGeometry.boundsTree;
-        scene.add(collider);
-
-        const mesh = new THREE.Mesh(diamond.geometry, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        const mesh = new THREE.Mesh(diamondGeometry, material);
         mesh.material.uniforms.bvh.value.updateFrom(collider.boundsTree);
 
         const camDist = 400; // place diamonds in front of camera at approx this depth
@@ -396,31 +466,52 @@ function init() {
   // container.appendChild(stats.dom);
   // container.style.touchAction = "none";
   window.addEventListener("resize", onWindowResize);
+  document.addEventListener("visibilitychange", () => {
+    isVisible = document.visibilityState === "visible";
+    updateAnimationLoop();
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(
+      ([entry]) => {
+        isInViewport = entry?.isIntersecting ?? true;
+        updateAnimationLoop();
+      },
+      { threshold: 0 },
+    ).observe(container);
+  }
+  updateAnimationLoop();
 }
 
 function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const width = viewportWidth();
+  const height = viewportHeight();
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  windowHalfX = window.innerWidth / 2;
-  windowHalfY = window.innerHeight / 2;
-  postprocessing.rtTextureDepth.setSize(window.innerWidth, window.innerHeight);
-  postprocessing.rtTextureColor.setSize(window.innerWidth, window.innerHeight);
-  postprocessing.bokeh_uniforms["textureWidth"].value = window.innerWidth;
-  postprocessing.bokeh_uniforms["textureHeight"].value = window.innerHeight;
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(renderPixelRatio());
+  composer.setPixelRatio(renderPixelRatio());
+  renderer.setSize(width, height);
+  composer.setSize(width, height);
+  updateMaterialResolutions();
 }
 
 function crystalsRotate(delta) {
   crystals.forEach((crystal) => {
-    crystal.mesh.rotation.x += crystal.rotationSpeed.x;
-    crystal.mesh.rotation.y += crystal.rotationSpeed.y;
-    crystal.mesh.rotation.z += crystal.rotationSpeed.z;
+    const frameScale = delta * 60;
+    crystal.mesh.rotation.x += crystal.rotationSpeed.x * frameScale;
+    crystal.mesh.rotation.y += crystal.rotationSpeed.y * frameScale;
+    crystal.mesh.rotation.z += crystal.rotationSpeed.z * frameScale;
   });
 }
 
 function animate() {
   const delta = clock.getDelta();
-  crystalsRotate(delta);
+  frameAccumulator += delta;
+  if (frameAccumulator < frameInterval) {
+    return;
+  }
+  const elapsed = frameAccumulator;
+  frameAccumulator = 0;
+  crystalsRotate(elapsed);
   render();
   // stats.update();
 }

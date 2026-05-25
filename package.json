@@ -1,5 +1,9 @@
 {
-	"dependencies": {
-		"daisyui": "^5.0.43"
-	}
+  "private": true,
+  "scripts": {
+    "build:core-js": "pnpm --filter @emerald-show/core-js build"
+  },
+  "dependencies": {
+    "daisyui": "^5.0.43"
+  }
 }

@@ -21,7 +21,9 @@
     }
   },
   "devDependencies": {
-    "@parcel/reporter-bundle-analyzer": "^2.15.2",
-    "@parcel/reporter-bundle-buddy": "^2.15.2"
+    "@parcel/core": "2.15.2",
+    "@parcel/reporter-bundle-analyzer": "2.15.2",
+    "@parcel/reporter-bundle-buddy": "2.15.2",
+    "parcel": "2.15.2"
   }
 }
