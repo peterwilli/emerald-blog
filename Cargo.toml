@@ -14,10 +14,10 @@ leptos_router = { version = "0.8.13" }
 axum = { version = "0.8.9", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 leptos_axum = { version = "0.8.9", optional = true }
-leptos_meta = { version = "0.8.6", features = ["ssr"] }
+leptos_meta = { version = "0.8.6" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 tracing-wasm = { version = "0.2.1", optional = true }
 wasm-bindgen = { version = "0.2.122", optional = true }
 libnostrblog = { path = "../libnostrblog" }
@@ -26,8 +26,6 @@ once_cell = "1.21.4"
 parking_lot = "0.12.5"
 serde_json = "1.0.150"
 serde = { version = "1.0.228", features = ["derive"] }
-slug = "0.1.6"
-chrono = "0.4.44"
 pulldown-cmark = "0.13.4"
 js-sys = { version = "0.3.99", optional = true }
 wasm-bindgen-futures = { version = "0.4.72", optional = true }
@@ -42,10 +40,10 @@ gloo-timers = { version = "0.4.0", features = ["futures"], optional = true }
 [features]
 default = []
 client-side-nostr-fetch = ["dep:gloo-timers"]
+hydrate-diagnostics = ["dep:console_error_panic_hook", "dep:tracing-wasm"]
 hydrate = [
     "leptos/hydrate",
-    "dep:console_error_panic_hook",
-    "dep:tracing-wasm",
+    "tracing/release_max_level_warn",
     "dep:js-sys",
     "dep:wasm-bindgen",
     "dep:wasm-bindgen-futures",
@@ -54,6 +52,7 @@ hydrate = [
 ssr = [
     "dep:axum",
     "dep:leptos_axum",
+    "dep:tracing-subscriber",
     "tokio/rt-multi-thread",
     "leptos/ssr",
     "leptos_meta/ssr",
@@ -70,6 +69,7 @@ opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = "immediate-abort"
+strip = true
 
 [package.metadata.leptos]
 # The name used by wasm-bindgen/cargo-leptos for the JS/WASM bundle. Defaults to the crate name
