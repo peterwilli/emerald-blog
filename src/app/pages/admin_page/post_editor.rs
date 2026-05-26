@@ -164,13 +164,23 @@ pub fn PostEditor(
 #[component]
 pub fn PublishNotice(status: ReadSignal<String>, posting: ReadSignal<bool>) -> impl IntoView {
     view! {
-        <Show when=move || !status.get().is_empty()>
-            <div class="admin-publish-notice" role="status" aria-live="polite">
-                <Show when=move || posting.get()>
-                    <span class="admin-publish-spinner"></span>
-                </Show>
-                <span>{status}</span>
-            </div>
-        </Show>
+        {move || {
+            if status.get().is_empty() {
+                ().into_any()
+            } else {
+                view! {
+                    <div class="admin-publish-notice" role="status" aria-live="polite">
+                        <span class=move || {
+                            if posting.get() {
+                                "admin-publish-spinner"
+                            } else {
+                                "hidden"
+                            }
+                        }></span>
+                        <span>{status}</span>
+                    </div>
+                }.into_any()
+            }
+        }}
     }
 }

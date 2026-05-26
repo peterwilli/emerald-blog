@@ -40,34 +40,20 @@ pub fn AdminPostPage() -> impl IntoView {
                 </div>
             </div>
 
-            <Show
-                when=move || tab.get() == AdminTab::Delete
-                fallback=move || {
-                    view! {
-                        <Show
-                            when=move || tab.get() == AdminTab::Comments
-                            fallback=move || {
-                                view! {
-                                    <Show
-                                        when=move || tab.get() == AdminTab::Art
-                                        fallback=move || {
-                                            view! {
-                                                <PostEditor posting set_posting status set_status />
-                                            }
-                                        }
-                                    >
-                                        <ArtEditor posting set_posting status set_status />
-                                    </Show>
-                                }
-                            }
-                        >
-                            <CommentModeration status set_status />
-                        </Show>
-                    }
-                }
-            >
-                <DeletePosts status set_status />
-            </Show>
+            {move || match tab.get() {
+                AdminTab::Post => view! {
+                    <PostEditor posting set_posting status set_status />
+                }.into_any(),
+                AdminTab::Art => view! {
+                    <ArtEditor posting set_posting status set_status />
+                }.into_any(),
+                AdminTab::Comments => view! {
+                    <CommentModeration status set_status />
+                }.into_any(),
+                AdminTab::Delete => view! {
+                    <DeletePosts status set_status />
+                }.into_any(),
+            }}
         </div>
     }
 }

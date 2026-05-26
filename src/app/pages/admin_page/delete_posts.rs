@@ -92,49 +92,49 @@ pub fn DeletePosts(status: ReadSignal<String>, set_status: WriteSignal<String>) 
                 />
             </label>
 
-            <Show
-                when=move || !loading.get()
-                fallback=move || view! { <p class="admin-post-hint">"Loading posts..."</p> }
-            >
-                <Show
-                    when=move || !posts.get().is_empty()
-                    fallback=move || view! { <p class="admin-post-hint">"No posts are loaded."</p> }
-                >
-                    <div class="admin-comment-list">
-                        <For
-                            each=move || posts.get()
-                            key=|post| post.id.clone()
-                            children=move |post| {
-                                let post_id = post.id.clone();
-                                let title = post.title.clone();
-                                let author_hex = post.author_hex.clone();
-                                view! {
-                                    <article class="admin-comment-item">
-                                        <div class="admin-comment-meta">
-                                            <span>{post.created_at}</span>
-                                            <span>{post.author}</span>
-                                        </div>
-                                        <p class="admin-comment-content">{post.title}</p>
-                                        <div class="admin-comment-refs">
-                                            <span>"Post " {post_id.clone()}</span>
-                                            <span>"Kind 1"</span>
-                                        </div>
-                                        <button
-                                            class="office2003-tool office2003-tool-primary admin-comment-approve"
-                                            type="button"
-                                            disabled=deleting
-                                            on:click=move |_| delete_post(post_id.clone(), title.clone(), author_hex.clone())
-                                        >
-                                            <span class="office2003-icon office2003-icon-delete"></span>
-                                            "Delete"
-                                        </button>
-                                    </article>
+            {move || {
+                if loading.get() {
+                    view! { <p class="admin-post-hint">"Loading posts..."</p> }.into_any()
+                } else if posts.get().is_empty() {
+                    view! { <p class="admin-post-hint">"No posts are loaded."</p> }.into_any()
+                } else {
+                    view! {
+                        <div class="admin-comment-list">
+                            <For
+                                each=move || posts.get()
+                                key=|post| post.id.clone()
+                                children=move |post| {
+                                    let post_id = post.id.clone();
+                                    let title = post.title.clone();
+                                    let author_hex = post.author_hex.clone();
+                                    view! {
+                                        <article class="admin-comment-item">
+                                            <div class="admin-comment-meta">
+                                                <span>{post.created_at}</span>
+                                                <span>{post.author}</span>
+                                            </div>
+                                            <p class="admin-comment-content">{post.title}</p>
+                                            <div class="admin-comment-refs">
+                                                <span>"Post " {post_id.clone()}</span>
+                                                <span>"Kind 1"</span>
+                                            </div>
+                                            <button
+                                                class="office2003-tool office2003-tool-primary admin-comment-approve"
+                                                type="button"
+                                                disabled=deleting
+                                                on:click=move |_| delete_post(post_id.clone(), title.clone(), author_hex.clone())
+                                            >
+                                                <span class="office2003-icon office2003-icon-delete"></span>
+                                                "Delete"
+                                            </button>
+                                        </article>
+                                    }.into_any()
                                 }
-                            }
-                        />
-                    </div>
-                </Show>
-            </Show>
+                            />
+                        </div>
+                    }.into_any()
+                }
+            }}
         </div>
     }
 }

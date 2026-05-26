@@ -84,15 +84,24 @@ pub async fn get_nostr_public_key() -> Result<PublicKey, String> {
 }
 
 #[cfg(feature = "hydrate")]
-pub async fn publish_comment_approval(comment_id: &str) -> Result<String, String> {
+pub async fn publish_comment_approval(
+    comment_id: &str,
+    post_id: Option<&str>,
+) -> Result<String, String> {
     let comment_id = EventId::parse(comment_id.trim())
         .map_err(|error| format!("Invalid comment event id: {error}"))?;
     let public_key = get_nostr_public_key().await?;
-    let tags = vec![
+    let mut tags = vec![
         Tag::event(comment_id),
         tag(["L", "libnostrblog/moderation"])?,
         tag(["l", "approved", "libnostrblog/moderation"])?,
     ];
+
+    if let Some(post_id) = post_id.map(str::trim).filter(|post_id| !post_id.is_empty()) {
+        EventId::parse(post_id).map_err(|error| format!("Invalid post event id: {error}"))?;
+        tags.push(tag(["E", post_id])?);
+    }
+
     let event =
         sign_unsigned_event(unsigned_event(public_key, Kind::Custom(1985), tags, "")).await?;
 
@@ -316,7 +325,10 @@ pub fn has_nostr_signer() -> bool {
 }
 
 #[cfg(not(feature = "hydrate"))]
-pub async fn publish_comment_approval(_comment_id: &str) -> Result<String, String> {
+pub async fn publish_comment_approval(
+    _comment_id: &str,
+    _post_id: Option<&str>,
+) -> Result<String, String> {
     Err("Comment approval is only available in the hydrated browser app.".into())
 }
 

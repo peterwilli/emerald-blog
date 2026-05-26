@@ -51,7 +51,7 @@ pub fn CommentModeration(
         });
     });
 
-    let approve = move |comment_id: String| {
+    let approve = move |comment_id: String, post_id: Option<String>| {
         if approving.get_untracked() {
             return;
         }
@@ -59,7 +59,7 @@ pub fn CommentModeration(
         set_approving.set(true);
         set_status.set("Waiting for NIP-07 approval signature...".into());
         leptos::task::spawn_local(async move {
-            match nostr::publish_comment_approval(&comment_id).await {
+            match nostr::publish_comment_approval(&comment_id, post_id.as_deref()).await {
                 Ok(event_id) => {
                     set_status.set(format!("Approved comment with event {event_id}."));
                     set_refresh.update(|value| *value += 1);
@@ -85,48 +85,49 @@ pub fn CommentModeration(
         </div>
 
         <div class="admin-post-form admin-comments-panel">
-            <Show
-                when=move || !loading.get()
-                fallback=move || view! { <p class="admin-post-hint">"Loading pending comments..."</p> }
-            >
-                <Show
-                    when=move || !comments.get().is_empty()
-                    fallback=move || view! { <p class="admin-post-hint">"No comments are waiting for approval."</p> }
-                >
-                    <div class="admin-comment-list">
-                        <For
-                            each=move || comments.get()
-                            key=|comment| comment.id.clone()
-                            children=move |comment| {
-                                let approve_id = comment.id.clone();
-                                view! {
-                                    <article class="admin-comment-item">
-                                        <div class="admin-comment-meta">
-                                            <span>{comment.created_at}</span>
-                                            <span>{comment.author}</span>
-                                        </div>
-                                        <p class="admin-comment-content">{comment.content}</p>
-                                        <div class="admin-comment-refs">
-                                            <span>"Comment " {comment.id.clone()}</span>
-                                            {comment.root.clone().map(|root| view! { <span>"Post " {root}</span> })}
-                                            {comment.parent.clone().map(|parent| view! { <span>"Parent " {parent}</span> })}
-                                        </div>
-                                        <button
-                                            class="office2003-tool office2003-tool-primary admin-comment-approve"
-                                            type="button"
-                                            disabled=approving
-                                            on:click=move |_| approve(approve_id.clone())
-                                        >
-                                            <span class="office2003-icon office2003-icon-mail"></span>
-                                            "Approve"
-                                        </button>
-                                    </article>
+            {move || {
+                if loading.get() {
+                    view! { <p class="admin-post-hint">"Loading pending comments..."</p> }.into_any()
+                } else if comments.get().is_empty() {
+                    view! { <p class="admin-post-hint">"No comments are waiting for approval."</p> }.into_any()
+                } else {
+                    view! {
+                        <div class="admin-comment-list">
+                            <For
+                                each=move || comments.get()
+                                key=|comment| comment.id.clone()
+                                children=move |comment| {
+                                    let approve_id = comment.id.clone();
+                                    let approve_post_id = comment.root.clone().or(comment.parent.clone());
+                                    view! {
+                                        <article class="admin-comment-item">
+                                            <div class="admin-comment-meta">
+                                                <span>{comment.created_at}</span>
+                                                <span>{comment.author}</span>
+                                            </div>
+                                            <p class="admin-comment-content">{comment.content}</p>
+                                            <div class="admin-comment-refs">
+                                                <span>"Comment " {comment.id.clone()}</span>
+                                                {comment.root.clone().map(|root| view! { <span>"Post " {root}</span> }.into_any())}
+                                                {comment.parent.clone().map(|parent| view! { <span>"Parent " {parent}</span> }.into_any())}
+                                            </div>
+                                            <button
+                                                class="office2003-tool office2003-tool-primary admin-comment-approve"
+                                                type="button"
+                                                disabled=approving
+                                                on:click=move |_| approve(approve_id.clone(), approve_post_id.clone())
+                                            >
+                                                <span class="office2003-icon office2003-icon-mail"></span>
+                                                "Approve"
+                                            </button>
+                                        </article>
+                                    }.into_any()
                                 }
-                            }
-                        />
-                    </div>
-                </Show>
-            </Show>
+                            />
+                        </div>
+                    }.into_any()
+                }
+            }}
         </div>
     }
 }

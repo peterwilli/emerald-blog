@@ -7,17 +7,21 @@ use crate::app::{
 use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::hooks::use_params_map;
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 use libnostrblog::{
-    Blog, BlogSettings, EventBuilder, EventId, Filter, Kind, PublicKey, Tag, TagStandard, ToBech32,
-    blog::comments::CommentsExt, nips::nip10::Marker, objects::comment::Comment,
+    Blog, BlogSettings, EventId, Filter, Kind, PublicKey, ToBech32, blog::comments::CommentsExt,
+    objects::comment::Comment,
 };
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "ssr")]
+use libnostrblog::{EventBuilder, Tag, TagStandard, nips::nip10::Marker};
+use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 use std::{collections::HashMap, time::Duration};
 
 #[cfg(feature = "ssr")]
-use crate::app::client::{OWNER_PUBKEY, get_anonymous_comment_client, get_nostr_client};
+use crate::app::client::get_anonymous_comment_client;
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+use crate::app::client::{OWNER_PUBKEY, get_nostr_client};
 
 #[cfg(feature = "hydrate")]
 const COMMENT_REFRESH_INTERVAL_MS: u64 = 15_000;
@@ -127,31 +131,44 @@ pub fn PostPage() -> impl IntoView {
 
 #[component]
 fn ApprovedComments(post_id: String) -> impl IntoView {
-    let comments_post_id = post_id.clone();
-    let comments =
-        OnceResource::new(async move { fetch_approved_comments(comments_post_id).await });
-    let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
-    #[cfg(feature = "hydrate")]
-    let refresh_started = RwSignal::new(false);
+    #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
+    {
+        let comments_post_id = post_id.clone();
+        let comments = LocalResource::new(move || {
+            let comments_post_id = comments_post_id.clone();
+            async move { fetch_approved_comments(comments_post_id).await }
+        });
+        let comments_result = RwSignal::new(None::<Result<Vec<ApprovedComment>, String>>);
+        let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
+        let refresh_started = RwSignal::new(false);
+        let refresh_post_id = post_id.clone();
 
-    view! {
-        <section class="post-comments">
-            <h2>"Comments"</h2>
-            <CommentComposer post_id=post_id.clone() />
-            <Suspense fallback=move || view! { <p class="post-comments-muted">"Loading comments..."</p> }>
+        Effect::new(move |_| {
+            let Some(result) = comments.get() else {
+                return;
+            };
+
+            if let Ok(comments) = &result {
+                start_comment_refresh(
+                    refresh_post_id.clone(),
+                    live_comments,
+                    refresh_started,
+                    comments.iter().map(|comment| comment.id.clone()).collect(),
+                );
+            }
+
+            comments_result.set(Some(result));
+        });
+
+        return view! {
+            <section class="post-comments">
+                <h2>"Comments"</h2>
+                <CommentComposer post_id=post_id.clone() />
                 {move || {
-                    comments
+                    comments_result
                         .get()
                         .map(|result| match result {
                             Ok(comments) => {
-                                #[cfg(feature = "hydrate")]
-                                start_comment_refresh(
-                                    post_id.clone(),
-                                    live_comments,
-                                    refresh_started,
-                                    comments.iter().map(|comment| comment.id.clone()).collect(),
-                                );
-
                                 view! {
                                     <CommentList live_comments=live_comments seeded_comments=comments />
                                 }.into_any()
@@ -159,14 +176,74 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
                             Err(error) => {
                                 view! {
                                     <p class="post-comments-muted">
-                                        "Could not load comments: " {error.to_string()}
+                                        "Could not load comments: " {error}
                                     </p>
                                 }.into_any()
                             }
                         })
+                        .unwrap_or_else(|| {
+                            view! { <p class="post-comments-muted">"Loading comments..."</p> }.into_any()
+                        })
                 }}
-            </Suspense>
-        </section>
+            </section>
+        }
+        .into_any();
+    }
+
+    #[cfg(not(all(feature = "hydrate", feature = "client-side-nostr-fetch")))]
+    {
+        #[cfg(feature = "hydrate")]
+        let comments = {
+            let comments_post_id = post_id.clone();
+            LocalResource::new(move || {
+                let comments_post_id = comments_post_id.clone();
+                async move { fetch_approved_comments(comments_post_id).await }
+            })
+        };
+        #[cfg(not(feature = "hydrate"))]
+        let comments = {
+            let comments_post_id = post_id.clone();
+            OnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
+        };
+        let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
+        #[cfg(feature = "hydrate")]
+        let refresh_started = RwSignal::new(false);
+
+        view! {
+            <section class="post-comments">
+                <h2>"Comments"</h2>
+                <CommentComposer post_id=post_id.clone() />
+                <Suspense fallback=move || view! { <p class="post-comments-muted">"Loading comments..."</p> }>
+                    {move || {
+                        comments
+                            .get()
+                            .map(|result| match result {
+                                Ok(comments) => {
+                                    #[cfg(feature = "hydrate")]
+                                    start_comment_refresh(
+                                        post_id.clone(),
+                                        live_comments,
+                                        refresh_started,
+                                        comments.iter().map(|comment| comment.id.clone()).collect(),
+                                    );
+
+                                    view! {
+                                        <CommentList live_comments=live_comments seeded_comments=comments />
+                                    }.into_any()
+                                }
+                                Err(error) => {
+                                    view! {
+                                        <p class="post-comments-muted">
+                                            "Could not load comments: " {error.to_string()}
+                                        </p>
+                                    }.into_any()
+                                }
+                            })
+                    }}
+                </Suspense>
+            </section>
+        }
+        .into_any()
     }
 }
 
@@ -406,11 +483,9 @@ pub async fn publish_anonymous_comment(
     Ok(event_id.to_hex())
 }
 
-#[server]
-pub async fn fetch_approved_comments(
-    post_id: String,
-) -> Result<Vec<ApprovedComment>, ServerFnError> {
-    let post_id = EventId::from_hex(&post_id)?;
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+pub async fn fetch_approved_comments(post_id: String) -> Result<Vec<ApprovedComment>, String> {
+    let post_id = EventId::from_hex(&post_id).map_err(|error| error.to_string())?;
     let client = get_nostr_client().await;
     let blog = Blog::new_with_settings(
         client.clone(),
@@ -421,18 +496,31 @@ pub async fn fetch_approved_comments(
     );
 
     let comments = blog
-        .fetch_comments(post_id)
+        .fetch_approved_comments(post_id)
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        .map_err(|error| error.to_string())?;
     let profiles = fetch_comment_profiles(&client, &comments).await;
 
-    Ok(comments
+    let mut comments = comments
         .into_iter()
         .map(|comment| approved_comment_from_comment(comment, &profiles))
-        .collect())
+        .collect::<Vec<_>>();
+    comments.sort_by(|left, right| {
+        right
+            .created_at_secs
+            .cmp(&left.created_at_secs)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+
+    Ok(comments)
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+pub async fn fetch_approved_comments(_post_id: String) -> Result<Vec<ApprovedComment>, String> {
+    Err("Comment fetching is only available in the SSR or hydrated app.".into())
+}
+
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 fn approved_comment_from_comment(
     comment: Comment<'_>,
     profiles: &HashMap<PublicKey, CommentProfile>,
@@ -455,7 +543,7 @@ fn approved_comment_from_comment(
     }
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 async fn fetch_comment_profiles(
     client: &libnostrblog::Client,
     comments: &[Comment<'_>],
@@ -492,7 +580,7 @@ async fn fetch_comment_profiles(
     profiles
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 #[derive(Debug, Deserialize)]
 struct CommentProfile {
     name: Option<String>,
@@ -502,7 +590,7 @@ struct CommentProfile {
     nip05: Option<String>,
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 impl CommentProfile {
     fn preferred_name(&self) -> Option<String> {
         self.display_name
@@ -568,13 +656,13 @@ fn clean_display_name(display_name: &str) -> Option<String> {
     (!cleaned.is_empty()).then(|| cleaned.chars().take(64).collect())
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 struct ParsedComment {
     display_name: Option<String>,
     content: String,
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
 fn parse_comment_frontmatter(content: &str) -> ParsedComment {
     let Some(rest) = content.strip_prefix("---\n") else {
         return ParsedComment {
