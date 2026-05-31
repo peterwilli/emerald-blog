@@ -3,44 +3,49 @@ use libnostrblog::objects::post::Post;
 
 use super::AppState;
 
-#[cfg(any(
-    feature = "ssr",
-    all(feature = "hydrate", feature = "client-side-nostr-fetch")
-))]
-use super::client::{OWNER_PUBKEY, get_nostr_client};
-#[cfg(feature = "ssr")]
-use libnostrblog::blog::fetch_posts::FetchPostExt;
-#[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-use libnostrblog::blog::stream_posts::StreamPostsExt;
-#[cfg(any(
-    feature = "ssr",
-    all(feature = "hydrate", feature = "client-side-nostr-fetch")
-))]
-use libnostrblog::{Blog, Timestamp, blog::fetch_authors::FetchAuthorsExt};
+cfg_if::cfg_if! {
+    if #[cfg(any(
+        feature = "ssr",
+        all(
+            feature = "hydrate",
+            feature = "client-side-nostr-fetch",
+            not(feature = "islands")
+        )
+    ))] {
+        use super::client::{get_nostr_client, OWNER_PUBKEY};
+        use libnostrblog::{blog::fetch_authors::FetchAuthorsExt, Blog, Timestamp};
+        use tracing::{debug, warn};
+    }
+}
 
-#[cfg(feature = "ssr")]
-use once_cell::sync::Lazy;
-#[cfg(feature = "ssr")]
-use parking_lot::RwLock;
-#[cfg(feature = "ssr")]
-use std::{
-    env, fs,
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, SystemTime},
-};
-#[cfg(feature = "ssr")]
-use tokio::time;
-#[cfg(feature = "ssr")]
-use tracing::info;
-#[cfg(any(
-    feature = "ssr",
-    all(feature = "hydrate", feature = "client-side-nostr-fetch")
-))]
-use tracing::{debug, warn};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "ssr")] {
+        use libnostrblog::blog::fetch_posts::FetchPostExt;
+        use once_cell::sync::Lazy;
+        use parking_lot::RwLock;
+        use std::{
+            env, fs,
+            path::PathBuf,
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
+            time::{Duration, SystemTime},
+        };
+        use tokio::time;
+        use tracing::info;
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(all(
+        feature = "hydrate",
+        feature = "client-side-nostr-fetch",
+        not(feature = "islands")
+    ))] {
+        use libnostrblog::blog::stream_posts::StreamPostsExt;
+    }
+}
 
 #[cfg(feature = "ssr")]
 pub type SyncedPostList = Arc<RwLock<Vec<Post<'static>>>>;
@@ -62,8 +67,15 @@ pub fn PostsSync() -> impl IntoView {
     Effect::new(move |_| {
         if let Some(posts) = posts.get() {
             state.merge_posts(posts);
-            #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-            start_client_post_sync(state.clone());
+            cfg_if::cfg_if! {
+                if #[cfg(all(
+                    feature = "hydrate",
+                    feature = "client-side-nostr-fetch",
+                    not(feature = "islands")
+                ))] {
+                    start_client_post_sync(state.clone());
+                }
+            }
         }
     });
 
@@ -76,6 +88,13 @@ pub async fn start_server_post_sync() {
         return;
     }
 
+    let blog = load_server_posts_once().await;
+
+    start_server_post_poll(blog);
+}
+
+#[cfg(feature = "ssr")]
+pub async fn load_server_posts_once() -> Option<Blog<'static>> {
     let blog = blog_with_authors("loading posts").await;
     if let Some(blog) = blog.as_ref() {
         if !fetch_and_replace_posts(blog).await {
@@ -85,7 +104,7 @@ pub async fn start_server_post_sync() {
         load_cached_posts();
     }
 
-    start_server_post_poll(blog);
+    blog
 }
 
 #[cfg(feature = "ssr")]
@@ -147,7 +166,11 @@ async fn fetch_newer_posts(blog: &Blog<'_>) {
 
 #[cfg(any(
     feature = "ssr",
-    all(feature = "hydrate", feature = "client-side-nostr-fetch")
+    all(
+        feature = "hydrate",
+        feature = "client-side-nostr-fetch",
+        not(feature = "islands")
+    )
 ))]
 async fn blog_with_authors(action: &str) -> Option<Blog<'static>> {
     let client = get_nostr_client().await;
@@ -193,50 +216,55 @@ fn latest_post_timestamp() -> Option<Timestamp> {
     POSTS_LIST.read().iter().map(|post| post.created_at).max()
 }
 
-#[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-fn start_client_post_sync(state: AppState) {
-    if state.client_post_sync_started.get_untracked() {
-        return;
-    }
-    state.client_post_sync_started.set(true);
+cfg_if::cfg_if! {
+    if #[cfg(all(
+        feature = "hydrate",
+        feature = "client-side-nostr-fetch",
+        not(feature = "islands")
+    ))] {
+        fn start_client_post_sync(state: AppState) {
+            if state.client_post_sync_started.get_untracked() {
+                return;
+            }
+            state.client_post_sync_started.set(true);
 
-    let state = state.clone();
-    leptos::task::spawn_local(async move {
-        let cooldown = std::time::Duration::from_secs(10);
+            let state = state.clone();
+            leptos::task::spawn_local(async move {
+                let cooldown = std::time::Duration::from_secs(10);
 
-        loop {
-            stream_newer_client_posts(state.clone()).await;
-            gloo_timers::future::sleep(cooldown).await;
+                loop {
+                    stream_newer_client_posts(state.clone()).await;
+                    gloo_timers::future::sleep(cooldown).await;
+                }
+            });
         }
-    });
-}
 
-#[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-async fn stream_newer_client_posts(state: AppState) {
-    let from = state
-        .live_posts
-        .with_untracked(latest_client_post_timestamp);
-    let Some(blog) = blog_with_authors("streaming posts").await else {
-        return;
-    };
+        async fn stream_newer_client_posts(state: AppState) {
+            let from = state
+                .live_posts
+                .with_untracked(latest_client_post_timestamp);
+            let Some(blog) = blog_with_authors("streaming posts").await else {
+                return;
+            };
 
-    let mut rx = match blog.stream_posts(from).await {
-        Ok(rx) => rx,
-        Err(error) => {
-            warn!("failed to stream posts: {error:?}");
-            return;
+            let mut rx = match blog.stream_posts(from).await {
+                Ok(rx) => rx,
+                Err(error) => {
+                    warn!("failed to stream posts: {error:?}");
+                    return;
+                }
+            };
+
+            while let Some(post) = rx.recv().await {
+                debug!("client stream added post: {:?}", post);
+                state.merge_posts(vec![post]);
+            }
         }
-    };
 
-    while let Some(post) = rx.recv().await {
-        debug!("client stream added post: {:?}", post);
-        state.merge_posts(vec![post]);
+        fn latest_client_post_timestamp(posts: &Vec<Post<'static>>) -> Option<Timestamp> {
+            posts.iter().map(|post| post.created_at).max()
+        }
     }
-}
-
-#[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-fn latest_client_post_timestamp(posts: &Vec<Post<'static>>) -> Option<Timestamp> {
-    posts.iter().map(|post| post.created_at).max()
 }
 
 #[cfg(feature = "ssr")]

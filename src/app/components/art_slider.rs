@@ -59,7 +59,8 @@ pub fn ArtSlider() -> impl IntoView {
     }
 }
 
-#[component]
+#[cfg_attr(feature = "islands", island)]
+#[cfg_attr(not(feature = "islands"), component)]
 fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
     if slides.is_empty() {
         return ().into_any();

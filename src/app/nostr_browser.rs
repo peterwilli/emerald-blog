@@ -10,11 +10,15 @@ pub struct PostDraft {
 
 #[cfg(feature = "hydrate")]
 use libnostrblog::{
-    Event, EventId, JsonUtil, Kind, PublicKey, Tag, Timestamp, ToBech32, UnsignedEvent,
+    Event, EventBuilder, EventId, JsonUtil, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp,
+    ToBech32, UnsignedEvent, nips::nip10::Marker,
 };
 
 #[cfg(feature = "hydrate")]
-use crate::app::client::get_nostr_client;
+use crate::app::client::{OWNER_PUBKEY, get_nostr_client};
+
+#[cfg(feature = "hydrate")]
+const LOCAL_COMMENT_SECRET_KEY: &str = "emerald.comment.secret_key";
 
 #[cfg(feature = "hydrate")]
 pub async fn publish_nostr_post(draft: PostDraft) -> Result<String, String> {
@@ -51,6 +55,30 @@ pub async fn publish_comment(post_id: &str, content: &str) -> Result<String, Str
         body.to_owned(),
     ))
     .await?;
+
+    publish_signed_event(event).await
+}
+
+#[cfg(feature = "hydrate")]
+pub async fn publish_local_comment(
+    post_id: &str,
+    display_name: &str,
+    content: &str,
+) -> Result<String, String> {
+    let post_id =
+        EventId::from_hex(post_id).map_err(|error| format!("Invalid post id: {error}"))?;
+    let display_name = clean_display_name(display_name)
+        .ok_or_else(|| "Choose a display name before publishing.".to_string())?;
+    let content = content.trim();
+
+    if content.is_empty() {
+        return Err("Write a comment before publishing.".into());
+    }
+
+    let keys = local_comment_keys()?;
+    let event = local_comment_builder(post_id, anonymous_comment_content(&display_name, content))
+        .sign_with_keys(&keys)
+        .map_err(|error| format!("Unable to sign comment: {error}"))?;
 
     publish_signed_event(event).await
 }
@@ -266,6 +294,82 @@ fn build_post_tags(draft: &PostDraft) -> Result<Vec<Tag>, String> {
 }
 
 #[cfg(feature = "hydrate")]
+fn local_comment_builder(post_id: EventId, content: String) -> EventBuilder {
+    EventBuilder::new(Kind::Comment, content).tags([
+        Tag::from_standardized_without_cell(TagStandard::Event {
+            event_id: post_id,
+            relay_url: None,
+            marker: Some(Marker::Root),
+            public_key: Some(OWNER_PUBKEY),
+            uppercase: true,
+        }),
+        Tag::from_standardized_without_cell(TagStandard::Kind {
+            kind: Kind::TextNote,
+            uppercase: true,
+        }),
+        Tag::from_standardized_without_cell(TagStandard::PublicKey {
+            public_key: OWNER_PUBKEY,
+            relay_url: None,
+            alias: None,
+            uppercase: true,
+        }),
+        Tag::from_standardized_without_cell(TagStandard::Event {
+            event_id: post_id,
+            relay_url: None,
+            marker: Some(Marker::Reply),
+            public_key: Some(OWNER_PUBKEY),
+            uppercase: false,
+        }),
+        Tag::from_standardized_without_cell(TagStandard::Kind {
+            kind: Kind::TextNote,
+            uppercase: false,
+        }),
+        Tag::public_key(OWNER_PUBKEY),
+    ])
+}
+
+#[cfg(feature = "hydrate")]
+fn local_comment_keys() -> Result<Keys, String> {
+    let storage = web_sys::window()
+        .ok_or_else(|| "Browser window is not available.".to_string())?
+        .local_storage()
+        .map_err(|_| "Unable to read localStorage.".to_string())?
+        .ok_or_else(|| "localStorage is not available.".to_string())?;
+
+    if let Some(secret_key) = storage
+        .get_item(LOCAL_COMMENT_SECRET_KEY)
+        .map_err(|_| "Unable to read local comment key.".to_string())?
+    {
+        return Keys::parse(secret_key.trim())
+            .map_err(|error| format!("Stored local comment key is invalid: {error}"));
+    }
+
+    let keys = Keys::generate();
+    storage
+        .set_item(LOCAL_COMMENT_SECRET_KEY, &keys.secret_key().to_secret_hex())
+        .map_err(|_| "Unable to store local comment key.".to_string())?;
+
+    Ok(keys)
+}
+
+#[cfg(feature = "hydrate")]
+fn anonymous_comment_content(display_name: &str, content: &str) -> String {
+    format!(
+        "---\ndisplay_name: \"{}\"\n---\n\n{}",
+        display_name.replace('\\', "\\\\").replace('"', "\\\""),
+        content.trim()
+    )
+}
+
+#[cfg(feature = "hydrate")]
+fn clean_display_name(display_name: &str) -> Option<String> {
+    let cleaned = display_name.trim().replace(['\r', '\n'], " ");
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    (!cleaned.is_empty()).then(|| cleaned.chars().take(64).collect())
+}
+
+#[cfg(feature = "hydrate")]
 fn tag<const N: usize>(values: [&str; N]) -> Result<Tag, String> {
     Tag::parse(values).map_err(|error| format!("Invalid Nostr tag: {error}"))
 }
@@ -316,6 +420,15 @@ pub async fn publish_nostr_post(_draft: PostDraft) -> Result<String, String> {
 
 #[cfg(not(feature = "hydrate"))]
 pub async fn publish_comment(_post_id: &str, _content: &str) -> Result<String, String> {
+    Err("Commenting is only available in the hydrated browser app.".into())
+}
+
+#[cfg(not(feature = "hydrate"))]
+pub async fn publish_local_comment(
+    _post_id: &str,
+    _display_name: &str,
+    _content: &str,
+) -> Result<String, String> {
     Err("Commenting is only available in the hydrated browser app.".into())
 }
 

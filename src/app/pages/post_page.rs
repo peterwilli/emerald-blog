@@ -12,14 +12,10 @@ use libnostrblog::{
     Blog, BlogSettings, EventId, Filter, Kind, PublicKey, ToBech32, blog::comments::CommentsExt,
     objects::comment::Comment,
 };
-#[cfg(feature = "ssr")]
-use libnostrblog::{EventBuilder, Tag, TagStandard, nips::nip10::Marker};
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
 use std::{collections::HashMap, time::Duration};
 
-#[cfg(feature = "ssr")]
-use crate::app::client::get_anonymous_comment_client;
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
 use crate::app::client::{OWNER_PUBKEY, get_nostr_client};
 
@@ -131,102 +127,48 @@ pub fn PostPage() -> impl IntoView {
 
 #[component]
 fn ApprovedComments(post_id: String) -> impl IntoView {
-    #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
-    {
-        let comments_post_id = post_id.clone();
-        let comments = LocalResource::new(move || {
-            let comments_post_id = comments_post_id.clone();
-            async move { fetch_approved_comments(comments_post_id).await }
-        });
-        let comments_result = RwSignal::new(None::<Result<Vec<ApprovedComment>, String>>);
-        let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
-        let refresh_started = RwSignal::new(false);
-        let refresh_post_id = post_id.clone();
-
-        Effect::new(move |_| {
-            let Some(result) = comments.get() else {
-                return;
-            };
-
-            if let Ok(comments) = &result {
-                start_comment_refresh(
-                    refresh_post_id.clone(),
-                    live_comments,
-                    refresh_started,
-                    comments.iter().map(|comment| comment.id.clone()).collect(),
-                );
-            }
-
-            comments_result.set(Some(result));
-        });
-
-        return view! {
-            <section class="post-comments">
-                <h2>"Comments"</h2>
-                <CommentComposer post_id=post_id.clone() />
-                {move || {
-                    comments_result
-                        .get()
-                        .map(|result| match result {
-                            Ok(comments) => {
-                                view! {
-                                    <CommentList live_comments=live_comments seeded_comments=comments />
-                                }.into_any()
-                            }
-                            Err(error) => {
-                                view! {
-                                    <p class="post-comments-muted">
-                                        "Could not load comments: " {error}
-                                    </p>
-                                }.into_any()
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            view! { <p class="post-comments-muted">"Loading comments..."</p> }.into_any()
-                        })
-                }}
-            </section>
-        }
-        .into_any();
-    }
-
-    #[cfg(not(all(feature = "hydrate", feature = "client-side-nostr-fetch")))]
-    {
-        #[cfg(feature = "hydrate")]
-        let comments = {
+    cfg_if::cfg_if! {
+        if #[cfg(all(
+            feature = "hydrate",
+            feature = "client-side-nostr-fetch",
+            not(feature = "islands")
+        ))] {
             let comments_post_id = post_id.clone();
-            LocalResource::new(move || {
+            let comments = LocalResource::new(move || {
                 let comments_post_id = comments_post_id.clone();
                 async move { fetch_approved_comments(comments_post_id).await }
-            })
-        };
-        #[cfg(not(feature = "hydrate"))]
-        let comments = {
-            let comments_post_id = post_id.clone();
-            OnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
-        };
-        let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
-        #[cfg(feature = "hydrate")]
-        let refresh_started = RwSignal::new(false);
+            });
+            let comments_result = RwSignal::new(None::<Result<Vec<ApprovedComment>, String>>);
+            let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
+            let refresh_started = RwSignal::new(false);
+            let refresh_post_id = post_id.clone();
 
-        view! {
-            <section class="post-comments">
-                <h2>"Comments"</h2>
-                <CommentComposer post_id=post_id.clone() />
-                <Suspense fallback=move || view! { <p class="post-comments-muted">"Loading comments..."</p> }>
+            Effect::new(move |_| {
+                let Some(result) = comments.get() else {
+                    return;
+                };
+
+                if let Ok(comments) = &result {
+                    start_comment_refresh(
+                        refresh_post_id.clone(),
+                        live_comments,
+                        refresh_started,
+                        comments.iter().map(|comment| comment.id.clone()).collect(),
+                    );
+                }
+
+                comments_result.set(Some(result));
+            });
+
+            view! {
+                <section class="post-comments">
+                    <h2>"Comments"</h2>
+                    <CommentComposer post_id=post_id.clone() />
                     {move || {
-                        comments
+                        comments_result
                             .get()
                             .map(|result| match result {
                                 Ok(comments) => {
-                                    #[cfg(feature = "hydrate")]
-                                    start_comment_refresh(
-                                        post_id.clone(),
-                                        live_comments,
-                                        refresh_started,
-                                        comments.iter().map(|comment| comment.id.clone()).collect(),
-                                    );
-
                                     view! {
                                         <CommentList live_comments=live_comments seeded_comments=comments />
                                     }.into_any()
@@ -234,16 +176,72 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
                                 Err(error) => {
                                     view! {
                                         <p class="post-comments-muted">
-                                            "Could not load comments: " {error.to_string()}
+                                            "Could not load comments: " {error}
                                         </p>
                                     }.into_any()
                                 }
                             })
+                            .unwrap_or_else(|| {
+                                view! { <p class="post-comments-muted">"Loading comments..."</p> }.into_any()
+                            })
                     }}
-                </Suspense>
-            </section>
+                </section>
+            }
+            .into_any()
+        } else {
+            #[cfg(feature = "hydrate")]
+            let comments = {
+                let comments_post_id = post_id.clone();
+                LocalResource::new(move || {
+                    let comments_post_id = comments_post_id.clone();
+                    async move { fetch_approved_comments(comments_post_id).await }
+                })
+            };
+            #[cfg(not(feature = "hydrate"))]
+            let comments = {
+                let comments_post_id = post_id.clone();
+                OnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
+            };
+            let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
+            #[cfg(feature = "hydrate")]
+            let refresh_started = RwSignal::new(false);
+
+            view! {
+                <section class="post-comments">
+                    <h2>"Comments"</h2>
+                    <CommentComposer post_id=post_id.clone() />
+                    <Suspense fallback=move || view! { <p class="post-comments-muted">"Loading comments..."</p> }>
+                        {move || {
+                            comments
+                                .get()
+                                .map(|result| match result {
+                                    Ok(comments) => {
+                                        #[cfg(feature = "hydrate")]
+                                        start_comment_refresh(
+                                            post_id.clone(),
+                                            live_comments,
+                                            refresh_started,
+                                            comments.iter().map(|comment| comment.id.clone()).collect(),
+                                        );
+
+                                        view! {
+                                            <CommentList live_comments=live_comments seeded_comments=comments />
+                                        }.into_any()
+                                    }
+                                    Err(error) => {
+                                        view! {
+                                            <p class="post-comments-muted">
+                                                "Could not load comments: " {error.to_string()}
+                                            </p>
+                                        }.into_any()
+                                    }
+                                })
+                        }}
+                    </Suspense>
+                </section>
+            }
+            .into_any()
         }
-        .into_any()
     }
 }
 
@@ -351,7 +349,8 @@ fn refresh_approved_comments(
     });
 }
 
-#[component]
+#[cfg_attr(feature = "islands", island)]
+#[cfg_attr(not(feature = "islands"), component)]
 fn CommentComposer(post_id: String) -> impl IntoView {
     let (content, set_content) = signal(String::new());
     let (display_name, set_display_name) = signal(String::new());
@@ -392,9 +391,7 @@ fn CommentComposer(post_id: String) -> impl IntoView {
             let result = if submit_with_nostr {
                 nostr_browser::publish_comment(&post_id, &comment).await
             } else {
-                publish_anonymous_comment(post_id, name, comment)
-                    .await
-                    .map_err(|error| error.to_string())
+                nostr_browser::publish_local_comment(&post_id, &name, &comment).await
             };
 
             match result {
@@ -454,33 +451,6 @@ fn CommentComposer(post_id: String) -> impl IntoView {
             </div>
         </div>
     }
-}
-
-#[server]
-pub async fn publish_anonymous_comment(
-    post_id: String,
-    display_name: String,
-    content: String,
-) -> Result<String, ServerFnError> {
-    let post_id = EventId::from_hex(&post_id)?;
-    let display_name = clean_display_name(&display_name)
-        .ok_or_else(|| ServerFnError::new("Display name is required."))?;
-    let content = content.trim();
-
-    if content.is_empty() {
-        return Err(ServerFnError::new("Comment is required."));
-    }
-
-    let client = get_anonymous_comment_client().await;
-    let event_id = client
-        .send_event_builder(comment_builder(
-            post_id,
-            anonymous_comment_content(&display_name, content),
-        ))
-        .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
-
-    Ok(event_id.to_hex())
 }
 
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
@@ -602,58 +572,6 @@ impl CommentProfile {
             .filter(|name| !name.is_empty())
             .map(ToOwned::to_owned)
     }
-}
-
-#[cfg(feature = "ssr")]
-fn comment_builder(post_id: EventId, content: String) -> EventBuilder {
-    EventBuilder::new(Kind::Comment, content).tags([
-        Tag::from_standardized_without_cell(TagStandard::Event {
-            event_id: post_id,
-            relay_url: None,
-            marker: Some(Marker::Root),
-            public_key: Some(OWNER_PUBKEY),
-            uppercase: true,
-        }),
-        Tag::from_standardized_without_cell(TagStandard::Kind {
-            kind: Kind::TextNote,
-            uppercase: true,
-        }),
-        Tag::from_standardized_without_cell(TagStandard::PublicKey {
-            public_key: OWNER_PUBKEY,
-            relay_url: None,
-            alias: None,
-            uppercase: true,
-        }),
-        Tag::from_standardized_without_cell(TagStandard::Event {
-            event_id: post_id,
-            relay_url: None,
-            marker: Some(Marker::Reply),
-            public_key: Some(OWNER_PUBKEY),
-            uppercase: false,
-        }),
-        Tag::from_standardized_without_cell(TagStandard::Kind {
-            kind: Kind::TextNote,
-            uppercase: false,
-        }),
-        Tag::public_key(OWNER_PUBKEY),
-    ])
-}
-
-#[cfg(feature = "ssr")]
-fn anonymous_comment_content(display_name: &str, content: &str) -> String {
-    format!(
-        "---\ndisplay_name: \"{}\"\n---\n\n{}",
-        display_name.replace('\\', "\\\\").replace('"', "\\\""),
-        content.trim()
-    )
-}
-
-#[cfg(feature = "ssr")]
-fn clean_display_name(display_name: &str) -> Option<String> {
-    let cleaned = display_name.trim().replace(['\r', '\n'], " ");
-    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    (!cleaned.is_empty()).then(|| cleaned.chars().take(64).collect())
 }
 
 #[cfg(any(feature = "ssr", feature = "hydrate"))]

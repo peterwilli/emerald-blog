@@ -36,7 +36,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
                 <AutoReload options=options.clone() />
                 <script type="module" src="/emerald-core.js"></script>
-                <HydrationScripts options />
+                <HydrationScripts options islands=cfg!(feature = "islands") />
                 <MetaTags />
             </head>
             <body>
@@ -50,7 +50,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 pub struct AppState {
     pub posts: ArcOnceResource<Vec<Post<'static>>>,
     pub live_posts: ArcRwSignal<Vec<Post<'static>>>,
-    #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
+    #[allow(dead_code)]
     client_post_sync_started: ArcRwSignal<bool>,
 }
 
@@ -79,7 +79,6 @@ pub fn App() -> impl IntoView {
     let app_state = AppState {
         posts: ArcOnceResource::new(async { seed_posts().await.unwrap_or_default() }),
         live_posts: ArcRwSignal::new(Vec::new()),
-        #[cfg(all(feature = "hydrate", feature = "client-side-nostr-fetch"))]
         client_post_sync_started: ArcRwSignal::new(false),
     };
     provide_context(app_state);
@@ -90,9 +89,9 @@ pub fn App() -> impl IntoView {
             <Header />
             <main class="relative z-10 container mx-auto px-4 py-8 max-w-8xl">
                 <Routes fallback=|| "Not found.">
-                    <Route path=StaticSegment("") view=HomePage />
-                    <Route path=path!("/post/:slug") view=PostPage ssr=SsrMode::Async />
-                    <Route path=path!("blog") view=BlogPage />
+                    <Route path=StaticSegment("") view=HomePage ssr=page_ssr_mode() />
+                    <Route path=path!("/post/:slug") view=PostPage ssr=post_ssr_mode() />
+                    <Route path=path!("blog") view=BlogPage ssr=page_ssr_mode() />
                     <Route path=path!("/admin/post") view=AdminPostPage />
                 </Routes>
                 <footer class="site-footer">
@@ -129,5 +128,37 @@ pub fn App() -> impl IntoView {
             </main>
         </Router>
         <div class="emerald-bg fixed left-0 right-0 top-0 bottom-0" />
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "static-export")] {
+        use leptos_router::static_routes::{StaticParamsMap, StaticRoute};
+        use post_sync::POSTS_LIST;
+
+        fn page_ssr_mode() -> SsrMode {
+            SsrMode::Static(StaticRoute::new())
+        }
+
+        fn post_ssr_mode() -> SsrMode {
+            SsrMode::Static(StaticRoute::new().prerender_params(|| async {
+                let mut params = StaticParamsMap::new();
+                let slugs = POSTS_LIST
+                    .read()
+                    .iter()
+                    .map(utils::post_slug)
+                    .collect::<Vec<_>>();
+                params.insert("slug", slugs);
+                params
+            }))
+        }
+    } else {
+        fn page_ssr_mode() -> SsrMode {
+            SsrMode::OutOfOrder
+        }
+
+        fn post_ssr_mode() -> SsrMode {
+            SsrMode::Async
+        }
     }
 }

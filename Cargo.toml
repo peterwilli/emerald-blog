@@ -13,6 +13,7 @@ leptos = { version = "0.8.19" }
 leptos_router = { version = "0.8.13" }
 axum = { version = "0.8.9", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
+cfg-if = "1.0.4"
 leptos_axum = { version = "0.8.9", optional = true }
 leptos_meta = { version = "0.8.6" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
@@ -20,7 +21,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 tracing-wasm = { version = "0.2.1", optional = true }
 wasm-bindgen = { version = "0.2.122", optional = true }
-libnostrblog = { path = "../libnostrblog" }
+libnostrblog = { git ="https://github.com/peterwilli/libnostrblog", rev ="c2627d3d87dccdc6360a4b453f6dd42463151615" }
 any_spawner = { version = "0.3.0", features = ["tokio"] }
 once_cell = "1.21.4"
 parking_lot = "0.12.5"
@@ -31,11 +32,15 @@ js-sys = { version = "0.3.99", optional = true }
 wasm-bindgen-futures = { version = "0.4.72", optional = true }
 web-sys = { version = "0.3.99", optional = true, features = [
     "Event",
+    "Storage",
     "WebSocket",
     "Window",
 ] }
 hex-literal = "1.1.0"
 gloo-timers = { version = "0.4.0", features = ["futures"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+secp256k1 = { version = "0.29.1", features = ["lowmemory"] }
 
 [features]
 default = []
@@ -49,6 +54,7 @@ hydrate = [
     "dep:wasm-bindgen-futures",
     "dep:web-sys",
 ]
+islands = ["leptos/islands"]
 ssr = [
     "dep:axum",
     "dep:leptos_axum",
@@ -58,6 +64,7 @@ ssr = [
     "leptos_meta/ssr",
     "leptos_router/ssr",
 ]
+static-export = ["ssr"]
 
 [profile.release]
 panic = "immediate-abort"
@@ -134,3 +141,10 @@ lib-default-features = false
 lib-profile-release = "wasm-release"
 
 tailwind-input-file = "style/tailwind.css"
+
+wasm-opt-features = [
+    "-Oz",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--enable-sign-ext",
+]

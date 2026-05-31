@@ -1,8 +1,8 @@
 [unstable]
 build-std = ["std", "panic_abort", "core", "alloc"]
-panic-immediate-abort = true
 
 [build]
 # target = "aarch64-unknown-linux-musl"
 # target = "aarch64-apple-darwin"
 rustflags = ["--cfg=has_std"]
+

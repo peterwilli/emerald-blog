@@ -17,3 +17,6 @@ node_modules/
 
 .DS_Store
 .parcel-cache/
+
+# Public files that are reproducable
+public/emerald-core.js

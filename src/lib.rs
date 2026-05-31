@@ -9,5 +9,12 @@ pub fn hydrate() {
     console_error_panic_hook::set_once();
     #[cfg(feature = "hydrate-diagnostics")]
     tracing_wasm::set_as_global_default();
-    leptos::mount::hydrate_body(App);
+
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "islands")] {
+            leptos::mount::hydrate_islands();
+        } else {
+            leptos::mount::hydrate_body(App);
+        }
+    }
 }

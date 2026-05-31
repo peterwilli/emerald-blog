@@ -1,0 +1,4 @@
+interface:
+  display_name: "WASM Size Expert"
+  short_description: "Analyze and shrink Rust WebAssembly builds"
+  default_prompt: "Use $wasm-size-expert to inspect this project’s release WASM size and identify practical shrink targets."

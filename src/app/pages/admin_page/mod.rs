@@ -21,7 +21,8 @@ enum AdminTab {
     Delete,
 }
 
-#[component]
+#[cfg_attr(feature = "islands", island)]
+#[cfg_attr(not(feature = "islands"), component)]
 pub fn AdminPostPage() -> impl IntoView {
     let (tab, set_tab) = signal(AdminTab::Post);
     let (posting, set_posting) = signal(false);
