@@ -1,6 +1,5 @@
 mod art_editor;
 mod delete_posts;
-mod migration;
 mod moderation;
 mod post_editor;
 
@@ -9,8 +8,8 @@ use leptos::prelude::*;
 use leptos_meta::Title;
 
 use self::{
-    art_editor::ArtEditor, delete_posts::DeletePosts, migration::MigrationTool,
-    moderation::CommentModeration, post_editor::PostEditor,
+    art_editor::ArtEditor, delete_posts::DeletePosts, moderation::CommentModeration,
+    post_editor::PostEditor,
 };
 use nostr::PostDraft;
 
@@ -18,7 +17,6 @@ use nostr::PostDraft;
 enum AdminTab {
     Post,
     Art,
-    Migration,
     Comments,
     Delete,
 }
@@ -38,7 +36,6 @@ pub fn AdminPostPage() -> impl IntoView {
                 <div class="office2003-tabs">
                     <AdminTabButton current=tab set_current=set_tab label="Post" target=AdminTab::Post />
                     <AdminTabButton current=tab set_current=set_tab label="Art" target=AdminTab::Art />
-                    <AdminTabButton current=tab set_current=set_tab label="Migration" target=AdminTab::Migration />
                     <AdminTabButton current=tab set_current=set_tab label="Comments" target=AdminTab::Comments />
                     <AdminTabButton current=tab set_current=set_tab label="Delete" target=AdminTab::Delete />
                 </div>
@@ -50,9 +47,6 @@ pub fn AdminPostPage() -> impl IntoView {
                 }.into_any(),
                 AdminTab::Art => view! {
                     <ArtEditor posting set_posting status set_status />
-                }.into_any(),
-                AdminTab::Migration => view! {
-                    <MigrationTool posting set_posting status set_status />
                 }.into_any(),
                 AdminTab::Comments => view! {
                     <CommentModeration status set_status />

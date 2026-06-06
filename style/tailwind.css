@@ -1211,29 +1211,6 @@
   min-height: 260px;
 }
 
-.admin-migration-panel {
-  min-height: 420px;
-}
-
-.admin-migration-raw {
-  min-height: 280px;
-}
-
-.admin-migration-summary {
-  align-items: center;
-  background: #fff;
-  border: 1px solid #7aa7c7;
-  color: #001033;
-  display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-}
-
-.admin-migration-summary b {
-  color: #003d8c;
-  font-size: 1.2rem;
-}
-
 .admin-comment-list {
   display: grid;
   gap: 10px;
