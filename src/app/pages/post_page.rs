@@ -1,5 +1,6 @@
 use crate::app::{
     AppState,
+    components::media_display::MediaDisplay,
     markdown::render_markdown,
     nostr_browser,
     utils::{post_slug, title_slug, to_date_string},
@@ -9,18 +10,21 @@ use leptos_meta::*;
 use leptos_router::hooks::use_params_map;
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
 use libnostrblog::{
-    Blog, BlogSettings, EventId, Filter, Kind, PublicKey, ToBech32, blog::comments::CommentsExt,
+    Blog, BlogSettings, EventId, Filter, Kind, PublicKey, blog::comments::CommentsExt,
     objects::comment::Comment,
 };
+use libnostrblog::{ToBech32, objects::post::Author};
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
 use std::{collections::HashMap, time::Duration};
 
+use crate::app::client::OWNER_PUBKEY;
 #[cfg(any(feature = "ssr", feature = "hydrate"))]
-use crate::app::client::{OWNER_PUBKEY, get_nostr_client};
+use crate::app::client::get_nostr_client;
 
 #[cfg(feature = "hydrate")]
 const COMMENT_REFRESH_INTERVAL_MS: u64 = 15_000;
+const NJUMP_PROFILE_PREFIX: &str = "https://njump.me/";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ApprovedComment {
@@ -47,9 +51,10 @@ pub fn PostPage() -> impl IntoView {
             }>
                 {move || {
                     posts
-                        .get()
+                        .try_get()
+                        .flatten()
                         .map(|seeded_posts| {
-                            let current_posts = live_posts.get();
+                            let current_posts = live_posts.try_get().unwrap_or_default();
                             let posts = if current_posts.is_empty() {
                                 seeded_posts
                             } else {
@@ -83,9 +88,7 @@ pub fn PostPage() -> impl IntoView {
                                 <h1 class="text-2xl font-bold text-emerald mb-4">
                                     {post.title.clone()}
                                 </h1>
-                                <p class="text-emerald/70 text-sm mb-3">
-                                    {to_date_string(post.created_at)}
-                                </p>
+                                <PostAuthor author=post.author.clone() created_at=to_date_string(post.created_at) />
                                 <div class="mt-4 flex flex-col gap-5 md:flex-row md:items-start">
                                     <div class="prose prose-emerald max-w-none min-w-0 flex-1">
                                         <div
@@ -106,7 +109,7 @@ pub fn PostPage() -> impl IntoView {
                                                     class="block w-full md:w-72 lg:w-80 flex-none rounded-xl overflow-hidden border border-white/10 transition-opacity hover:opacity-90"
                                                     title="Open larger image"
                                                 >
-                                                    <img
+                                                    <MediaDisplay
                                                         src=image_url
                                                         class="w-full max-h-64 object-cover"
                                                         alt=post.title.to_string()
@@ -123,6 +126,131 @@ pub fn PostPage() -> impl IntoView {
             </Suspense>
         </div>
     }
+}
+
+#[component]
+fn PostAuthor(author: Author<'static>, created_at: String) -> impl IntoView {
+    let name = author_name(&author);
+    let handle = author_handle(&author);
+    let about = author_about(&author);
+    let profile_href = owner_profile_href();
+    let initial = name
+        .chars()
+        .find(|character| character.is_alphanumeric())
+        .map(|character| character.to_uppercase().collect::<String>())
+        .unwrap_or_else(|| "E".to_owned());
+
+    view! {
+        <div class="mb-6 flex items-center gap-3 border-y border-white/10 py-3">
+            <a
+                href=profile_href.clone()
+                target="_blank"
+                rel="noopener noreferrer"
+                class="h-12 w-12 flex-none overflow-hidden rounded-full border border-emerald/50 bg-emerald/15 shadow-[0_0_16px_rgba(80,200,120,0.2)] transition-opacity hover:opacity-85"
+                title="Open Emerald profile"
+            >
+                {author
+                    .picture
+                    .map(|picture| {
+                        view! {
+                            <img
+                                src=picture.to_string()
+                                alt=format!("{name} profile picture")
+                                class="h-full w-full object-cover"
+                            />
+                        }
+                            .into_any()
+                    })
+                    .unwrap_or_else(|| {
+                        view! {
+                            <div class="flex h-full w-full items-center justify-center text-lg font-bold text-white">
+                                {initial}
+                            </div>
+                        }
+                            .into_any()
+                    })}
+            </a>
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span class="text-sm text-white/60">"Written by"</span>
+                    <a
+                        href=profile_href.clone()
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="truncate text-base font-semibold text-white transition-colors hover:text-emerald"
+                    >
+                        {name}
+                    </a>
+                </div>
+                <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/60">
+                    <a
+                        href=profile_href
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="max-w-full truncate transition-colors hover:text-emerald"
+                    >
+                        {handle}
+                    </a>
+                    <span aria-hidden="true">"/"</span>
+                    <time>{created_at}</time>
+                </div>
+                {about
+                    .map(|about| {
+                        view! {
+                            <p class="mt-2 text-sm leading-relaxed text-white/70">
+                                {about}
+                            </p>
+                        }
+                    })}
+            </div>
+        </div>
+    }
+}
+
+fn owner_profile_href() -> String {
+    format!(
+        "{NJUMP_PROFILE_PREFIX}{}",
+        OWNER_PUBKEY
+            .to_bech32()
+            .unwrap_or_else(|_| OWNER_PUBKEY.to_hex())
+    )
+}
+
+fn author_name(author: &Author<'_>) -> String {
+    author
+        .display_name
+        .as_deref()
+        .or(author.username.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| author_fallback_key(author))
+}
+
+fn author_handle(author: &Author<'_>) -> String {
+    author
+        .username
+        .as_deref()
+        .map(str::trim)
+        .filter(|username| !username.is_empty())
+        .map(|username| format!("@{username}"))
+        .unwrap_or_else(|| author_fallback_key(author))
+}
+
+fn author_about(author: &Author<'_>) -> Option<String> {
+    author
+        .about
+        .as_deref()
+        .map(str::trim)
+        .filter(|about| !about.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn author_fallback_key(author: &Author<'_>) -> String {
+    author
+        .pubkey
+        .to_bech32()
+        .unwrap_or_else(|_| author.pubkey.to_hex())
 }
 
 #[component]
@@ -200,7 +328,7 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
             #[cfg(not(feature = "hydrate"))]
             let comments = {
                 let comments_post_id = post_id.clone();
-                OnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
+                ArcOnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
             };
             let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
             #[cfg(feature = "hydrate")]

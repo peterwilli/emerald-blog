@@ -1,7 +1,8 @@
 # One-Shot SSR Then CSR
 
 The `static-export` feature turns the server binary into a one-shot generator:
-it fetches the latest posts once, prerenders `/`, `/blog`, and every current
+it fetches the latest posts once, prerenders `/`, `/blog`, `/art`, known
+category routes such as `/blog/journal` and `/art/portraits`, and every current
 `/post/{slug}`, writes HTML into `target/site`, and exits without binding a
 socket.
 
@@ -44,6 +45,11 @@ LEPTOS_SITE_ROOT=target/site target/release/emerald-blog-v3
 The resulting `target/site/` directory contains the static HTML, Leptos
 CSS/WASM assets, and files copied from `public/`. Serve that directory with any
 static file host.
+
+Category filters use static route paths such as `/blog/journal` and
+`/art/portraits`. The exporter prerenders category routes that exist in the
+build-time post set; newer categories discovered later still work through the
+hydrated client router, but need a fresh export for no-JavaScript/static HTML.
 
 ## Comments
 

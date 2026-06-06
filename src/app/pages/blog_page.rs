@@ -7,6 +7,6 @@ use crate::app::components::post_list::PostList;
 pub fn BlogPage() -> impl IntoView {
     view! {
         <Title text="Emerald Show Blog" />
-        <PostList />
+        <PostList show_category_filter=true />
     }
 }

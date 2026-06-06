@@ -116,7 +116,7 @@ pub fn DeletePosts(status: ReadSignal<String>, set_status: WriteSignal<String>) 
                                             <p class="admin-comment-content">{post.title}</p>
                                             <div class="admin-comment-refs">
                                                 <span>"Post " {post_id.clone()}</span>
-                                                <span>"Kind 1"</span>
+                                                <span>"Kind 30023"</span>
                                             </div>
                                             <button
                                                 class="office2003-tool office2003-tool-primary admin-comment-approve"

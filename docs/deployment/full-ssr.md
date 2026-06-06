@@ -10,10 +10,14 @@ load.
 
 Pros:
 
-- Fully SEO-optimized HTML for `/`, `/blog`, and individual post routes.
+- Fully SEO-optimized HTML for `/`, `/blog`, `/art`, and individual post routes.
 - Server polling keeps post data fresh for crawlers and no-JavaScript visitors.
 - Full WASM hydration can sync newer posts and comments in the browser.
 - Works well with dynamic routes and client-side navigation.
+
+Category filters use static route paths such as `/blog/journal` and
+`/art/portraits`. The SSR server renders both filtered and unfiltered category
+routes directly.
 
 Cons:
 

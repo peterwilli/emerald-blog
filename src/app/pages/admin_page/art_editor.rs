@@ -1,6 +1,15 @@
 use leptos::prelude::*;
 
-use super::{PostDraft, post_editor::PublishNotice, publish_post};
+use crate::app::{
+    components::media_display::MediaDisplay,
+    utils::{ART_CATEGORY, is_art_category},
+};
+
+use super::{
+    PostDraft,
+    post_editor::{CategoryInput, PublishNotice},
+    publish_post,
+};
 
 #[component]
 pub fn ArtEditor(
@@ -12,6 +21,7 @@ pub fn ArtEditor(
     let (title, set_title) = signal(String::new());
     let (excerpt, set_excerpt) = signal(String::new());
     let (featured_image, set_featured_image) = signal(String::new());
+    let (categories, set_categories) = signal(String::new());
     let (content, set_content) = signal(String::new());
 
     let publish = move |_| {
@@ -19,7 +29,7 @@ pub fn ArtEditor(
             title: title.get_untracked(),
             excerpt: excerpt.get_untracked(),
             featured_image: featured_image.get_untracked(),
-            categories: "dream art".into(),
+            categories: art_categories(&categories.get_untracked()),
             content: content.get_untracked(),
         };
 
@@ -33,7 +43,7 @@ pub fn ArtEditor(
             posting,
             set_posting,
             set_status,
-            "Published dream art event",
+            "Published art event",
         );
     };
 
@@ -62,7 +72,7 @@ pub fn ArtEditor(
                 />
             </label>
             <label>
-                <span>"Slider caption"</span>
+                <span>"Excerpt"</span>
                 <input
                     type="text"
                     class="admin-post-input"
@@ -80,6 +90,10 @@ pub fn ArtEditor(
                 />
             </label>
             <label>
+                <span>"Categories"</span>
+                <CategoryInput categories set_categories />
+            </label>
+            <label>
                 <span>"Post body"</span>
                 <textarea
                     class="admin-post-textarea admin-post-textarea-compact"
@@ -88,13 +102,39 @@ pub fn ArtEditor(
                 ></textarea>
             </label>
             <div class="admin-art-preview glass rounded-xl overflow-hidden">
-                <img src=move || featured_image.get() alt="" />
-                <div>
+                {move || {
+                    view! {
+                        <MediaDisplay
+                            src=featured_image.get()
+                            alt=title.get()
+                        />
+                    }
+                }}
+                <div class="admin-art-preview-copy">
                     <b>{title}</b>
                     <span>{excerpt}</span>
                 </div>
             </div>
-            <p class="admin-post-hint">"Art posts are tagged as dream art for the homepage slider."</p>
+            <p class="admin-post-hint">"Art posts are always tagged as art, plus any categories added here."</p>
         </div>
     }
+}
+
+fn art_categories(user_categories: &str) -> String {
+    let mut categories = vec![ART_CATEGORY.to_owned()];
+
+    for category in user_categories.split(',').map(str::trim) {
+        if category.is_empty()
+            || is_art_category(category)
+            || categories
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(category))
+        {
+            continue;
+        }
+
+        categories.push(category.to_owned());
+    }
+
+    categories.join(", ")
 }

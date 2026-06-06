@@ -8,6 +8,23 @@ pub struct PostDraft {
     pub content: String,
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(not(feature = "hydrate"), allow(dead_code))]
+pub struct MigrationPreview {
+    pub source_id: String,
+    pub title: String,
+    pub created_at: u64,
+    pub categories: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(not(feature = "hydrate"), allow(dead_code))]
+pub struct MigrationPublishResult {
+    pub source_id: String,
+    pub event_id: String,
+    pub title: String,
+}
+
 #[cfg(feature = "hydrate")]
 use libnostrblog::{
     Event, EventBuilder, EventId, JsonUtil, Keys, Kind, PublicKey, Tag, TagStandard, Timestamp,
@@ -16,6 +33,8 @@ use libnostrblog::{
 
 #[cfg(feature = "hydrate")]
 use crate::app::client::{OWNER_PUBKEY, get_nostr_client};
+#[cfg(feature = "hydrate")]
+use crate::app::utils::title_slug;
 
 #[cfg(feature = "hydrate")]
 const LOCAL_COMMENT_SECRET_KEY: &str = "emerald.comment.secret_key";
@@ -25,7 +44,7 @@ pub async fn publish_nostr_post(draft: PostDraft) -> Result<String, String> {
     let public_key = get_nostr_public_key().await?;
     let event = sign_unsigned_event(unsigned_event(
         public_key,
-        Kind::TextNote,
+        Kind::LongFormTextNote,
         build_post_tags(&draft)?,
         draft.content,
     ))
@@ -44,9 +63,9 @@ pub async fn publish_comment(post_id: &str, content: &str) -> Result<String, Str
     let public_key = get_nostr_public_key().await?;
     let tags = vec![
         tag(["E", post_id, "", "root"])?,
-        tag(["K", "1"])?,
+        tag(["K", long_form_kind()])?,
         tag(["e", post_id, "", "reply"])?,
-        tag(["k", "1"])?,
+        tag(["k", long_form_kind()])?,
     ];
     let event = sign_unsigned_event(unsigned_event(
         public_key,
@@ -150,7 +169,7 @@ pub async fn publish_post_deletion(
     let post_id =
         EventId::parse(post_id).map_err(|error| format!("Invalid post event id: {error}"))?;
     let public_key = get_nostr_public_key().await?;
-    let tags = vec![Tag::event(post_id), tag(["k", "1"])?];
+    let tags = vec![Tag::event(post_id), tag(["k", long_form_kind()])?];
     let event = sign_unsigned_event(unsigned_event(
         public_key,
         Kind::EventDeletion,
@@ -161,6 +180,58 @@ pub async fn publish_post_deletion(
 
     assert_signed_pubkey(&event, expected_author)?;
     publish_signed_event(event).await
+}
+
+#[cfg(feature = "hydrate")]
+pub async fn preview_text_note_migration(raw: &str) -> Result<Vec<MigrationPreview>, String> {
+    Ok(parse_migration_events(raw)?
+        .into_iter()
+        .map(|event| MigrationPreview {
+            source_id: event.id.to_hex(),
+            title: migration_title(&event),
+            created_at: event.created_at.as_u64(),
+            categories: migration_categories(&event),
+        })
+        .collect())
+}
+
+#[cfg(feature = "hydrate")]
+pub async fn publish_text_note_migration(raw: &str) -> Result<Vec<MigrationPublishResult>, String> {
+    let public_key = get_nostr_public_key().await?;
+    let events = parse_migration_events(raw)?;
+    let source_ids = events.iter().map(|event| event.id).collect::<Vec<_>>();
+    let mut published = Vec::with_capacity(events.len());
+
+    for event in events {
+        if event.pubkey != public_key {
+            return Err(format!(
+                "Source event {} belongs to {} but the signer is {}.",
+                event.id.to_hex(),
+                event.pubkey.to_hex(),
+                public_key.to_hex()
+            ));
+        }
+
+        let title = migration_title(&event);
+        let signed = sign_unsigned_event(unsigned_event(
+            public_key,
+            Kind::LongFormTextNote,
+            migration_tags(&event)?,
+            event.content.clone(),
+        ))
+        .await?;
+        let event_id = publish_signed_event(signed).await?;
+
+        published.push(MigrationPublishResult {
+            source_id: event.id.to_hex(),
+            event_id,
+            title,
+        });
+    }
+
+    publish_migrated_text_note_deletion(public_key, &source_ids).await?;
+
+    Ok(published)
 }
 
 #[cfg(feature = "hydrate")]
@@ -224,6 +295,28 @@ async fn publish_signed_event(event: Event) -> Result<String, String> {
 }
 
 #[cfg(feature = "hydrate")]
+async fn publish_migrated_text_note_deletion(
+    public_key: PublicKey,
+    source_ids: &[EventId],
+) -> Result<String, String> {
+    let mut tags = source_ids
+        .iter()
+        .copied()
+        .map(Tag::event)
+        .collect::<Vec<_>>();
+    tags.push(tag(["k", text_note_kind()])?);
+    let event = sign_unsigned_event(unsigned_event(
+        public_key,
+        Kind::EventDeletion,
+        tags,
+        "Migrated to long-form posts.",
+    ))
+    .await?;
+
+    publish_signed_event(event).await
+}
+
+#[cfg(feature = "hydrate")]
 fn validate_signed_event(unsigned: &UnsignedEvent, event: &Event) -> Result<(), String> {
     if event.pubkey != unsigned.pubkey {
         return Err(format!(
@@ -270,7 +363,13 @@ fn assert_signed_pubkey(event: &Event, expected_pubkey: &str) -> Result<(), Stri
 
 #[cfg(feature = "hydrate")]
 fn build_post_tags(draft: &PostDraft) -> Result<Vec<Tag>, String> {
-    let mut tags = vec![tag(["title", draft.title.trim()])?];
+    let published_at = Timestamp::now().as_u64().to_string();
+    let identifier = format!("{}-{published_at}", title_slug(&draft.title));
+    let mut tags = vec![
+        tag(["title", draft.title.trim()])?,
+        tag(["d", identifier.as_str()])?,
+        tag(["published_at", published_at.as_str()])?,
+    ];
     let excerpt = draft.excerpt.trim();
     let featured_image = draft.featured_image.trim();
 
@@ -304,7 +403,7 @@ fn local_comment_builder(post_id: EventId, content: String) -> EventBuilder {
             uppercase: true,
         }),
         Tag::from_standardized_without_cell(TagStandard::Kind {
-            kind: Kind::TextNote,
+            kind: Kind::LongFormTextNote,
             uppercase: true,
         }),
         Tag::from_standardized_without_cell(TagStandard::PublicKey {
@@ -321,11 +420,109 @@ fn local_comment_builder(post_id: EventId, content: String) -> EventBuilder {
             uppercase: false,
         }),
         Tag::from_standardized_without_cell(TagStandard::Kind {
-            kind: Kind::TextNote,
+            kind: Kind::LongFormTextNote,
             uppercase: false,
         }),
         Tag::public_key(OWNER_PUBKEY),
     ])
+}
+
+#[cfg(feature = "hydrate")]
+fn parse_migration_events(raw: &str) -> Result<Vec<Event>, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("Paste raw kind 1 events before parsing.".into());
+    }
+
+    let mut events = Vec::new();
+    let values = serde_json::Deserializer::from_str(raw).into_iter::<serde_json::Value>();
+
+    for value in values {
+        let value = value.map_err(|error| format!("Invalid raw Nostr JSON: {error}"))?;
+        match value {
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    push_migration_event(item, &mut events)?;
+                }
+            }
+            item => push_migration_event(item, &mut events)?,
+        }
+    }
+
+    if events.is_empty() {
+        return Err("No kind 1 events were found in the pasted raw output.".into());
+    }
+
+    Ok(events)
+}
+
+#[cfg(feature = "hydrate")]
+fn push_migration_event(value: serde_json::Value, events: &mut Vec<Event>) -> Result<(), String> {
+    let event = Event::from_json(value.to_string())
+        .map_err(|error| format!("Invalid Nostr event JSON: {error:?}"))?;
+    if event.kind == Kind::TextNote {
+        events.push(event);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "hydrate")]
+fn migration_tags(event: &Event) -> Result<Vec<Tag>, String> {
+    let mut tags = event.tags.iter().cloned().collect::<Vec<_>>();
+    if !has_tag(&tags, "d") {
+        tags.push(tag(["d", event.id.to_hex().as_str()])?);
+    }
+    if !has_tag(&tags, "published_at") {
+        tags.push(tag([
+            "published_at",
+            event.created_at.as_u64().to_string().as_str(),
+        ])?);
+    }
+    Ok(tags)
+}
+
+#[cfg(feature = "hydrate")]
+fn has_tag(tags: &[Tag], key: &str) -> bool {
+    tags.iter().any(|tag| {
+        let [tag_key, ..] = tag.as_slice() else {
+            return false;
+        };
+        tag_key == key
+    })
+}
+
+#[cfg(feature = "hydrate")]
+fn migration_title(event: &Event) -> String {
+    tag_values(event, "title")
+        .next()
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or("Untitled")
+        .to_owned()
+}
+
+#[cfg(feature = "hydrate")]
+fn migration_categories(event: &Event) -> Vec<String> {
+    tag_values(event, "t").map(ToOwned::to_owned).collect()
+}
+
+#[cfg(feature = "hydrate")]
+fn tag_values<'a>(event: &'a Event, key: &'a str) -> impl Iterator<Item = &'a str> {
+    event.tags.iter().filter_map(move |tag| {
+        let [tag_key, value, ..] = tag.as_slice() else {
+            return None;
+        };
+        (tag_key == key).then_some(value.as_str())
+    })
+}
+
+#[cfg(feature = "hydrate")]
+fn long_form_kind() -> &'static str {
+    "30023"
+}
+
+#[cfg(feature = "hydrate")]
+fn text_note_kind() -> &'static str {
+    "1"
 }
 
 #[cfg(feature = "hydrate")]
@@ -452,4 +649,16 @@ pub async fn publish_post_deletion(
     _expected_author: &str,
 ) -> Result<String, String> {
     Err("Post deletion is only available in the hydrated browser app.".into())
+}
+
+#[cfg(not(feature = "hydrate"))]
+pub async fn preview_text_note_migration(_raw: &str) -> Result<Vec<MigrationPreview>, String> {
+    Err("Migration is only available in the hydrated browser app.".into())
+}
+
+#[cfg(not(feature = "hydrate"))]
+pub async fn publish_text_note_migration(
+    _raw: &str,
+) -> Result<Vec<MigrationPublishResult>, String> {
+    Err("Migration is only available in the hydrated browser app.".into())
 }

@@ -14,10 +14,14 @@ continue to use WASM, while blog post rendering remains SSR-driven.
 
 Pros:
 
-- Fully SEO-optimized HTML for `/`, `/blog`, and individual post routes.
+- Fully SEO-optimized HTML for `/`, `/blog`, `/art`, and individual post routes.
 - Smaller WASM than full hydration because only islands hydrate.
 - Blog post rendering stays SSR-driven and predictable.
 - Nostr publishing and commenting still work through browser WASM.
+
+Category filters use static route paths such as `/blog/journal` and
+`/art/portraits`, rendered from SSR state. They do not require browser-side
+post streaming.
 
 Cons:
 

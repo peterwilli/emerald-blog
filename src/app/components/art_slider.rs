@@ -1,6 +1,7 @@
 use crate::app::{
     AppState,
-    utils::{is_dream_art_post, post_slug},
+    components::media_display::MediaDisplay,
+    utils::{blossom_thumb_url, is_art_post, is_video_media_url, post_slug},
 };
 use leptos::prelude::*;
 use libnostrblog::objects::post::Post;
@@ -44,12 +45,14 @@ pub fn ArtSlider() -> impl IntoView {
         }>
             {move || {
                 posts
-                    .get()
+                    .try_get()
+                    .flatten()
                     .map(|posts| {
                         let slides = posts
                             .iter()
-                            .filter(|post| is_dream_art_post(post))
+                            .filter(|post| is_art_post(post))
                             .filter_map(ArtSlide::from_post)
+                            .take(3)
                             .collect::<Vec<_>>();
 
                         view! { <ArtSliderView slides=slides /> }
@@ -79,8 +82,8 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
         if let Ok(interval) = set_interval_with_handle(
             move || {
                 if slide_count > 1 {
-                    set_active_index.update(|idx| *idx = (*idx + 1) % slide_count);
-                    set_timer_key.update(|key| *key += 1);
+                    set_active_index.try_update(|idx| *idx = (*idx + 1) % slide_count);
+                    set_timer_key.try_update(|key| *key += 1);
                 }
             },
             Duration::from_millis(SLIDE_INTERVAL_MS as u64),
@@ -96,7 +99,7 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                     each=move || stage_slides.clone().into_iter().enumerate()
                     key=|(_, slide)| slide.href.clone()
                     children=move |(idx, slide): (usize, ArtSlide)| {
-                        let active_slide = move || active_index.get() == idx;
+                        let active_slide = move || active_index.try_get() == Some(idx);
 
                         view! {
                             <a
@@ -111,10 +114,14 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                                 }
                                 aria-hidden=move || (!active_slide()).to_string()
                             >
-                                <img src=slide.image class="art-slider-image" />
+                                <MediaDisplay
+                                    src=slide.image
+                                    class="art-slider-image"
+                                    alt=slide.title.clone()
+                                />
                                 <div class="art-slider-vignette"></div>
                                 <div class="art-slider-copy">
-                                    <div class="art-slider-kicker">"Dream Art"</div>
+                                    <div class="art-slider-kicker">"Art"</div>
                                     <h2>{slide.title}</h2>
                                     <p>{slide.excerpt}</p>
                                 </div>
@@ -124,7 +131,7 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                 />
                 <div class="art-slider-progress" aria-hidden="true">
                     <For
-                        each=move || vec![timer_key.get()]
+                        each=move || { timer_key.try_get().into_iter().collect::<Vec<_>>() }
                         key=|key| *key
                         children=move |_| {
                             view! {
@@ -143,17 +150,23 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                     key=|(_, slide)| slide.href.clone()
                     children=move |(idx, slide): (usize, ArtSlide)| {
                         let title = slide.title.clone();
+                        let is_video = is_video_media_url(&slide.image);
+                        let thumb_image = if is_video {
+                            blossom_thumb_url(&slide.image)
+                        } else {
+                            slide.image.clone()
+                        };
                         let select_slide = move |ev: leptos::ev::MouseEvent| {
                             ev.prevent_default();
-                            set_active_index.set(idx);
-                            set_timer_key.update(|key| *key += 1);
+                            set_active_index.try_set(idx);
+                            set_timer_key.try_update(|key| *key += 1);
                         };
 
                         view! {
                             <a
                                 href=format!("#DreamArt{}", idx)
                                 class=move || {
-                                    if active_index.get() == idx {
+                                    if active_index.try_get() == Some(idx) {
                                         "art-slider-thumb art-slider-thumb-active"
                                     } else {
                                         "art-slider-thumb"
@@ -161,7 +174,7 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                                 }
                                 aria-label=format!("Show {}", title)
                                 aria-current=move || {
-                                    if active_index.get() == idx {
+                                    if active_index.try_get() == Some(idx) {
                                         "true"
                                     } else {
                                         "false"
@@ -169,12 +182,33 @@ fn ArtSliderView(slides: Vec<ArtSlide>) -> impl IntoView {
                                 }
                                 on:click=select_slide
                             >
-                                <img src=slide.image alt="" aria-hidden="true" />
-                                <span>{idx + 1}</span>
+                                {if is_video {
+                                    view! {
+                                        <>
+                                            <img
+                                                src=thumb_image
+                                                alt=format!("{} video thumbnail", title)
+                                            />
+                                            <span class="art-slider-thumb-movie" aria-hidden="true">
+                                                "🎬"
+                                            </span>
+                                        </>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <MediaDisplay
+                                            src=slide.image
+                                            class=""
+                                            alt=format!("{} thumbnail", title)
+                                        />
+                                    }.into_any()
+                                }}
+                                <span class="art-slider-thumb-index">{idx + 1}</span>
                             </a>
                         }
                     }
                 />
+                <a class="art-slider-view-all" href="/art">"View all art"</a>
             </div>
         </section>
     }

@@ -65,7 +65,7 @@ pub fn PostsSync() -> impl IntoView {
     let posts = state.posts.clone();
 
     Effect::new(move |_| {
-        if let Some(posts) = posts.get() {
+        if let Some(posts) = posts.try_get().flatten() {
             state.merge_posts(posts);
             cfg_if::cfg_if! {
                 if #[cfg(all(

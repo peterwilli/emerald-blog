@@ -10,7 +10,7 @@ The app is an SSR/hydrated blog for Emerald Show. Blog content comes from Nostr 
 - `src/app/mod.rs` defines `shell`, `App`, routes, the server function `seed_posts`, and the global posts context.
 - `src/app/client.rs` owns the Nostr public key, relay list, generated signer, and singleton client.
 - `src/app/post_sync.rs` seeds SSR posts and keeps server/client post sync behavior together.
-- Routes are `/`, `/blog`, and `/post/:slug`. Post links use `slug::slugify(&post.title)`.
+- Routes are `/`, `/blog`, `/blog/:category`, `/art`, `/art/:category`, and `/post/:slug`. Post links use `slug::slugify(&post.title)`.
 
 ## Project Structure & Module Organization
 
@@ -46,6 +46,9 @@ Run `cargo fmt` before submitting changes. Use names that describe UI responsibi
 - Keep comments rare. Prefer self-describing function, signal, resource, and component names over explanatory comments. Add comments only when they explain non-obvious behavior, feature-gated constraints, or external integration details.
 - Follow the current Leptos style: `#[component]` functions returning `impl IntoView`, route pages named `HomePage`, `BlogPage`, `PostPage`, and reusable components named after the UI they render.
 - Use `view!` markup directly for focused components. Extract a component when markup is reused or when a route-level view becomes hard to scan.
+- When making large structural changes to Leptos views, split deeply nested `view!` trees into smaller components before they become one large generated type. This avoids Rust query-depth or recursion-limit overflows from Tachys/Leptos markup expansion.
+- New features must work across all three documented deployment methods: full SSR, islands SSR, and one-shot static export with CSR. Keep route additions, server functions, hydration behavior, and post/category state compatible with each path.
+- Use `cfg_if!` for large conditional compilation switches so feature-gated SSR, hydration, islands, and static-export behavior stays readable.
 - Prefer Leptos signals/resources for reactive state. The existing post data flow uses `OnceResource<RwSignal<Vec<Post<'static>>>>` in `AppState`; keep consumers reading from context instead of re-fetching posts.
 - Use `Suspense` around resource-backed UI and provide small, stable fallbacks.
 - Keep route URLs and post slugs consistent with the existing `/post/{slugify(title)}` convention unless changing routing end to end.

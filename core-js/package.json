@@ -6,7 +6,7 @@
   "source": "src/index.js",
   "main": "../public/emerald-core.js",
   "scripts": {
-    "build": "parcel build --no-cache src/index.js",
+    "build": "parcel build --no-cache src/index.js && node ../scripts/minify-glsl-in-js.mjs ../public/emerald-core.js",
     "watch": "parcel watch src/index.js --dist-dir ../public"
   },
   "dependencies": {

@@ -58,6 +58,7 @@ pub fn Header() -> impl IntoView {
                     </div>
 
                     <div class="flex space-x-4">
+                        <HeaderItem title="Art" link="/art" />
                         <HeaderItem title="Blog" link="/blog" />
                     </div>
                 </div>
@@ -155,6 +156,13 @@ pub fn Header() -> impl IntoView {
                             attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
                         >
                             Blog
+                        </A>
+                        <A
+                            href="/art"
+                            on:click=close_menu
+                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                        >
+                            Art
                         </A>
                     </div>
                 </div>

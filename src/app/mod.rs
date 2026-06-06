@@ -16,7 +16,8 @@ pub mod pages;
 pub mod post_sync;
 pub mod utils;
 use pages::{
-    admin_page::AdminPostPage, blog_page::BlogPage, home_page::HomePage, post_page::PostPage,
+    admin_page::AdminPostPage, art_page::ArtPage, blog_page::BlogPage, home_page::HomePage,
+    post_page::PostPage,
 };
 use post_sync::{PostsSync, seed_posts};
 
@@ -27,6 +28,10 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8" />
                 <meta name="theme-color" content="#080215" />
+                <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+                <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+                <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+                <link rel="manifest" href="/site.webmanifest" />
                 <style>
                     "html,body{background:#080215;color-scheme:dark;}body{margin:0;min-height:100vh;}"
                 </style>
@@ -92,6 +97,9 @@ pub fn App() -> impl IntoView {
                     <Route path=StaticSegment("") view=HomePage ssr=page_ssr_mode() />
                     <Route path=path!("/post/:slug") view=PostPage ssr=post_ssr_mode() />
                     <Route path=path!("blog") view=BlogPage ssr=page_ssr_mode() />
+                    <Route path=path!("/blog/:category") view=BlogPage ssr=blog_category_ssr_mode() />
+                    <Route path=path!("art") view=ArtPage ssr=page_ssr_mode() />
+                    <Route path=path!("/art/:category") view=ArtPage ssr=art_category_ssr_mode() />
                     <Route path=path!("/admin/post") view=AdminPostPage />
                 </Routes>
                 <footer class="site-footer">
@@ -152,6 +160,51 @@ cfg_if::cfg_if! {
                 params
             }))
         }
+
+        fn blog_category_ssr_mode() -> SsrMode {
+            category_ssr_mode(false)
+        }
+
+        fn art_category_ssr_mode() -> SsrMode {
+            category_ssr_mode(true)
+        }
+
+        fn category_ssr_mode(art_only: bool) -> SsrMode {
+            SsrMode::Static(StaticRoute::new().prerender_params(move || async move {
+                let mut params = StaticParamsMap::new();
+                let mut categories = Vec::<String>::new();
+
+                for post in POSTS_LIST.read().iter() {
+                    if utils::is_art_post(post) != art_only {
+                        continue;
+                    }
+
+                    for category in &post.categories {
+                        let category = category.trim();
+                        if category.is_empty()
+                            || utils::is_art_category(category)
+                            || categories
+                                .iter()
+                                .any(|existing| existing.eq_ignore_ascii_case(category))
+                        {
+                            continue;
+                        }
+
+                        categories.push(category.to_owned());
+                    }
+                }
+
+                categories.sort_by_key(|category| category.to_lowercase());
+                params.insert(
+                    "category",
+                    categories
+                        .iter()
+                        .map(|category| utils::encode_path_segment(category))
+                        .collect::<Vec<_>>(),
+                );
+                params
+            }))
+        }
     } else {
         fn page_ssr_mode() -> SsrMode {
             SsrMode::OutOfOrder
@@ -159,6 +212,14 @@ cfg_if::cfg_if! {
 
         fn post_ssr_mode() -> SsrMode {
             SsrMode::Async
+        }
+
+        fn blog_category_ssr_mode() -> SsrMode {
+            SsrMode::OutOfOrder
+        }
+
+        fn art_category_ssr_mode() -> SsrMode {
+            SsrMode::OutOfOrder
         }
     }
 }

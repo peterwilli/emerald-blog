@@ -3,7 +3,7 @@ use libnostrblog::{Client, Keys, Options, PublicKey};
 use tokio::sync::OnceCell;
 
 pub static OWNER_PUBKEY: PublicKey = PublicKey::from_byte_array(hex!(
-    "5ea6f3b26df9d4ddd0ea26391cf6a5f644283a05e8251e95dbce5aef1d4cc228"
+    "cef23efdb0853ad6f854f1cb39a7bd62e031940e77429015fe9f67aa2fe74227"
 ));
 static NOSTRL_CLIENT: OnceCell<Client> = OnceCell::const_new();
 pub const NOSTR_RELAYS: &[&str] = &["wss://nos.lol", "wss://nostr.emerald.show"];

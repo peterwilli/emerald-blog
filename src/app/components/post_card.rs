@@ -2,7 +2,8 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use libnostrblog::objects::post::Post;
 
-use crate::app::utils::{post_slug, to_date_string};
+use crate::app::components::media_display::MediaDisplay;
+use crate::app::utils::{is_art_category, post_slug, to_date_string};
 
 #[component]
 pub fn PostCard(post: Post<'static>) -> impl IntoView {
@@ -18,7 +19,11 @@ pub fn PostCard(post: Post<'static>) -> impl IntoView {
                 .map(|image| {
                     view! {
                         <div class="w-full aspect-3/2">
-                            <img src=image.to_string() class="w-full h-full object-cover" />
+                            <MediaDisplay
+                                src=image.to_string()
+                                class="w-full h-full object-cover"
+                                alt=post.title.to_string()
+                            />
                         </div>
                     }
                 })} <div class="p-6">
@@ -29,6 +34,7 @@ pub fn PostCard(post: Post<'static>) -> impl IntoView {
                     {post
                         .categories
                         .iter()
+                        .filter(|c| !is_art_category(c))
                         .map(|c| {
                             view! { <span class="post-tag">{c.clone()}</span> }
                         })
