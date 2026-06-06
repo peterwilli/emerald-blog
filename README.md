@@ -1,6 +1,6 @@
-# Emerald Blog v3
+# Emerald Blog
 
-Emerald Blog v3 is the current home of the Emerald Show: a dream-soaked blog, art gallery, and Nostr publishing experiment built with Rust, Leptos, and `libnostrblog`.
+Fully functional blog written in Rust and Leptos using `libnostrblog`, complete with working layout, art gallery, moderated comments, admin panel and more.
 
 Posts are fetched from Nostr, rendered through Leptos routes at `/`, `/blog`, `/art`, and `/post/:slug`, and hydrated in the browser so the site can keep following new activity after the first page load. The look is very Emerald Show: glass panels, floating crystals, a rotating art showcase, and a custom animated background instead of a plain blog template.
 
@@ -13,7 +13,7 @@ The layout is custom, but the important parts are reusable. If you want to make 
 - **Nostr-backed publishing**: blog posts come from Nostr through `libnostrblog`, with server-side polling and optional client-side streaming for newer posts.
 - **Server-rendered, hydrated pages**: the app supports full SSR, islands SSR, and one-shot static export paths depending on how much runtime you want to operate.
 - **Moderated comments**: comments are fetched from Nostr, require approval, and can be reviewed from an admin moderation queue before appearing on post pages.
-- **NIP-07 and anonymous comments**: visitors with a browser signer can publish signed comments, while visitors without one can submit a display-name comment for moderation.
+- **NIP-07 and anonymous comments**: visitors with a browser signer can publish signed comments, while visitors without one can submit a display-name comment for moderation. The webassembly features a fully functioning Nostr client! People who are not into or are not using nostr won't even know you are using it! But if they at some point in the future want to, they can just grab the private key that this site generated for them, and keep the generated discourse with their new account.
 - **Markdown editor**: the admin post editor includes Markdown authoring, shortcut buttons for common markup, source/display modes, featured images, and categories.
 - **Art-first workflow**: art posts have a dedicated publisher, a gallery route, category filters, featured-art presentation, and a home-page carousel with filmstrip controls.
 - **Author and profile details**: posts and comments resolve Nostr profile data when available, with fallbacks to npub/hex identifiers.
