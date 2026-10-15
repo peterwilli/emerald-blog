@@ -6,6 +6,18 @@ full hydrated Leptos app. Enable client-side Nostr post streaming when you want
 the browser to merge in newer posts/comments without waiting for a full page
 load.
 
+Post pages render cached comments without waiting for Nostr. The server refreshes
+comments in the background at most once per minute per requested post. Without
+client-side Nostr fetching, the hydrated comments section checks this cache every
+15 seconds. A cold cache initially renders no comments; they appear after the
+first successful refresh. The comment cache resets when the server restarts.
+
+Post snapshots are saved to disk by default. On restart, the server serves the
+last snapshot immediately and refreshes it in the background, including when it
+is older than `EMERALD_POSTS_CACHE_TTL_SECS` (default: 86400). Set the TTL to `0`
+to disable disk caching. Set `EMERALD_POSTS_CACHE_PATH` to a file on a persistent
+volume to retain snapshots across container replacements.
+
 ## Tradeoffs
 
 Pros:

@@ -8,6 +8,8 @@ use leptos_router::{
 };
 use libnostrblog::objects::post::Post;
 pub mod client;
+#[cfg(all(feature = "ssr", not(feature = "static-export")))]
+mod comment_sync;
 pub mod components;
 pub mod layout;
 pub mod markdown;

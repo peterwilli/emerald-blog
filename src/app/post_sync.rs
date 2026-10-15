@@ -13,16 +13,15 @@ cfg_if::cfg_if! {
         )
     ))] {
         use super::client::{get_nostr_client, OWNER_PUBKEY};
-        use libnostrblog::{blog::fetch_authors::FetchAuthorsExt, Blog, Timestamp};
-        use tracing::{debug, warn};
+        use libnostrblog::{Timestamp, Filter, Kind, Metadata, objects::post::Author};
+        use tracing::warn;
     }
 }
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
         use libnostrblog::{
-            blog::{fetch_posts::FetchPostExt, extensions::to_posts::ToPosts},
-            objects::post::Author, types::Authors, Event, Filter, Kind, Metadata,
+            blog::extensions::to_posts::ToPosts, types::Authors, Event,
         };
         use once_cell::sync::Lazy;
         use parking_lot::RwLock;
@@ -46,7 +45,10 @@ cfg_if::cfg_if! {
         feature = "client-side-nostr-fetch",
         not(feature = "islands")
     ))] {
-        use libnostrblog::blog::stream_posts::StreamPostsExt;
+        use libnostrblog::{
+            Blog, blog::{fetch_authors::FetchAuthorsExt, stream_posts::StreamPostsExt},
+        };
+        use tracing::debug;
     }
 }
 
@@ -91,23 +93,35 @@ pub async fn start_server_post_sync() {
         return;
     }
 
-    load_server_posts_once().await;
-
-    start_server_post_poll();
+    let has_cached_posts = tokio::task::spawn_blocking(load_cached_posts)
+        .await
+        .unwrap_or(false);
+    if has_cached_posts {
+        tokio::task::spawn_local(async {
+            refresh_server_posts_once().await;
+            start_server_post_poll();
+        });
+    } else {
+        refresh_server_posts_once().await;
+        start_server_post_poll();
+    }
 }
 
 #[cfg(feature = "ssr")]
-pub async fn load_server_posts_once() -> Option<Blog<'static>> {
-    let blog = blog_with_authors("loading posts").await;
-    if let Some(blog) = blog.as_ref() {
-        if !fetch_and_replace_posts(blog).await {
-            load_cached_posts();
-        }
-    } else {
-        load_cached_posts();
-    }
+pub async fn load_server_posts_once() {
+    let _ = tokio::task::spawn_blocking(load_cached_posts).await;
+    refresh_server_posts_once().await;
+}
 
-    blog
+#[cfg(feature = "ssr")]
+async fn refresh_server_posts_once() {
+    let mut from = latest_post_timestamp();
+    if time::timeout(Duration::from_secs(35), fetch_newer_posts(&mut from))
+        .await
+        .is_err()
+    {
+        warn!("initial post refresh timed out; keeping cached posts");
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -128,30 +142,21 @@ fn start_server_post_poll() {
 }
 
 #[cfg(feature = "ssr")]
-async fn fetch_and_replace_posts(blog: &Blog<'_>) -> bool {
-    let posts = match blog.fetch_posts(None).await {
-        Ok(posts) => posts,
-        Err(error) => {
-            warn!("failed to fetch posts: {error:?}");
-            return false;
-        }
-    };
-
-    debug!("fetched posts: {:?}", posts);
-    replace_posts(posts);
-
-    write_cached_posts().await;
-    true
-}
-
-#[cfg(feature = "ssr")]
 async fn fetch_newer_posts(from: &mut Option<Timestamp>) {
     let requested_at = Timestamp::now();
     let client = get_nostr_client().await;
-    let events = match client
-        .fetch_events(post_update_filter(*from), Duration::from_secs(10))
-        .await
-    {
+    let (post_events, deletion_events, metadata_events) = tokio::join!(
+        client.fetch_events(post_update_filter(*from), Duration::from_secs(10)),
+        client.fetch_events(
+            Filter::new().author(OWNER_PUBKEY).kind(Kind::EventDeletion),
+            Duration::from_secs(10),
+        ),
+        client.fetch_events(
+            Filter::new().author(OWNER_PUBKEY).kind(Kind::Metadata),
+            Duration::from_secs(10),
+        ),
+    );
+    let events = match post_events {
         Ok(events) => events,
         Err(error) => {
             warn!("failed to fetch newer posts: {error:?}");
@@ -174,13 +179,7 @@ async fn fetch_newer_posts(from: &mut Option<Timestamp>) {
     authors.write().insert(author.pubkey.clone(), author);
     let posts = events.into_iter().to_posts(authors).collect();
     let mut changed = merge_posts(posts);
-    match client
-        .fetch_events(
-            Filter::new().author(OWNER_PUBKEY).kind(Kind::EventDeletion),
-            Duration::from_secs(10),
-        )
-        .await
-    {
+    match deletion_events {
         Ok(events) => {
             let mut posts = POSTS_LIST.write();
             let previous_len = posts.len();
@@ -190,35 +189,14 @@ async fn fetch_newer_posts(from: &mut Option<Timestamp>) {
         Err(error) => warn!("failed to refresh post deletions: {error:?}"),
     }
 
-    match client
-        .fetch_events(
-            Filter::new().author(OWNER_PUBKEY).kind(Kind::Metadata),
-            Duration::from_secs(10),
-        )
-        .await
-    {
+    match metadata_events {
         Ok(events) => {
             if let Some(metadata) = events
                 .iter()
                 .max_by_key(|event| event.created_at)
                 .and_then(|event| serde_json::from_str::<Metadata>(&event.content).ok())
             {
-                let author = Author {
-                    pubkey: Arc::new(OWNER_PUBKEY),
-                    username: metadata.name.map(Into::into),
-                    display_name: metadata.display_name.map(Into::into),
-                    about: metadata.about.map(Into::into),
-                    picture: metadata
-                        .picture
-                        .as_deref()
-                        .or_else(|| {
-                            metadata
-                                .custom
-                                .get("image")
-                                .and_then(|value| value.as_str())
-                        })
-                        .and_then(|value| value.parse().ok()),
-                };
+                let author = author_from_metadata(metadata);
                 let mut posts = POSTS_LIST.write();
                 for post in posts
                     .iter_mut()
@@ -240,6 +218,33 @@ async fn fetch_newer_posts(from: &mut Option<Timestamp>) {
 
     if changed {
         write_cached_posts().await;
+    }
+}
+
+#[cfg(any(
+    feature = "ssr",
+    all(
+        feature = "hydrate",
+        feature = "client-side-nostr-fetch",
+        not(feature = "islands")
+    )
+))]
+fn author_from_metadata(metadata: Metadata) -> Author<'static> {
+    Author {
+        pubkey: std::sync::Arc::new(OWNER_PUBKEY),
+        username: metadata.name.map(Into::into),
+        display_name: metadata.display_name.map(Into::into),
+        about: metadata.about.map(Into::into),
+        picture: metadata
+            .picture
+            .as_deref()
+            .or_else(|| {
+                metadata
+                    .custom
+                    .get("image")
+                    .and_then(|value| value.as_str())
+            })
+            .and_then(|value| value.parse().ok()),
     }
 }
 
@@ -272,13 +277,10 @@ fn deletes_post(event: &Event, post: &Post<'_>) -> bool {
         && (requested_kinds.is_empty() || requested_kinds.contains(&"30023"))
 }
 
-#[cfg(any(
-    feature = "ssr",
-    all(
-        feature = "hydrate",
-        feature = "client-side-nostr-fetch",
-        not(feature = "islands")
-    )
+#[cfg(all(
+    feature = "hydrate",
+    feature = "client-side-nostr-fetch",
+    not(feature = "islands")
 ))]
 async fn blog_with_authors(action: &str) -> Option<Blog<'static>> {
     let client = get_nostr_client().await;
@@ -299,7 +301,11 @@ fn replace_posts(mut posts: Vec<Post<'static>>) {
 
 #[cfg(feature = "ssr")]
 fn merge_posts(incoming_posts: Vec<Post<'static>>) -> bool {
-    let mut posts = POSTS_LIST.write();
+    merge_post_list(&mut POSTS_LIST.write(), incoming_posts)
+}
+
+#[cfg(feature = "ssr")]
+fn merge_post_list(posts: &mut Vec<Post<'static>>, incoming_posts: Vec<Post<'static>>) -> bool {
     let mut changed = false;
 
     for post in incoming_posts {
@@ -348,15 +354,18 @@ cfg_if::cfg_if! {
         }
 
         async fn refresh_client_author_metadata(state: AppState) {
-            let Some(blog) = blog_with_authors("refreshing browser author metadata").await else {
-                return;
-            };
-            let authors = blog.authors.read().clone();
+            let client = get_nostr_client().await;
+            let Ok(events) = client.fetch_events(
+                Filter::new().author(OWNER_PUBKEY).kind(Kind::Metadata),
+                std::time::Duration::from_secs(10),
+            ).await else { return; };
+            let Some(author) = events.iter().max_by_key(|event| event.created_at)
+                .and_then(|event| serde_json::from_str::<Metadata>(&event.content).ok())
+                .map(author_from_metadata)
+            else { return; };
             state.live_posts.update(|posts| {
-                for post in posts {
-                    if let Some(author) = authors.get(&post.author.pubkey) {
-                        post.author = (*author).clone();
-                    }
+                for post in posts.iter_mut().filter(|post| post.author.pubkey == author.pubkey) {
+                    post.author = author.clone();
                 }
             });
         }
@@ -407,14 +416,14 @@ fn load_cached_posts() -> bool {
         .is_some_and(|age| age <= ttl);
 
     if !is_fresh {
-        return false;
+        info!("Using stale cached posts while refreshing from relays");
     }
 
     match fs::read_to_string(&path)
         .ok()
         .and_then(|json| serde_json::from_str::<Vec<Post<'static>>>(&json).ok())
     {
-        Some(posts) => {
+        Some(posts) if !posts.is_empty() => {
             let post_count = posts.len();
             replace_posts(posts);
             info!(
@@ -423,7 +432,7 @@ fn load_cached_posts() -> bool {
             );
             true
         }
-        None => false,
+        _ => false,
     }
 }
 
@@ -452,23 +461,21 @@ fn write_cached_posts_blocking() {
         }
     }
 
-    if fs::write(&path, json).is_ok() {
+    let temporary_path = path.with_extension("json.tmp");
+    if let Err(error) =
+        fs::write(&temporary_path, json).and_then(|_| fs::rename(&temporary_path, &path))
+    {
+        warn!("failed to update post cache: {error}");
+    } else {
         info!("Cached {} posts at {}", posts.len(), path.to_string_lossy());
     }
 }
 
 #[cfg(feature = "ssr")]
 fn posts_cache_ttl() -> Option<Duration> {
-    let enabled_by_default = cfg!(debug_assertions);
-    let raw_ttl = env::var("EMERALD_POSTS_CACHE_TTL_SECS").ok();
-
-    if !enabled_by_default && raw_ttl.is_none() {
-        return None;
-    }
-
-    let ttl_secs = raw_ttl
-        .as_deref()
-        .map(|ttl| ttl.parse::<u64>().unwrap())
+    let ttl_secs = env::var("EMERALD_POSTS_CACHE_TTL_SECS")
+        .ok()
+        .and_then(|ttl| ttl.parse::<u64>().ok())
         .unwrap_or(86400);
 
     (ttl_secs > 0).then(|| Duration::from_secs(ttl_secs))
@@ -485,6 +492,34 @@ fn posts_cache_path() -> PathBuf {
 mod tests {
     use super::*;
     use libnostrblog::{EventBuilder, Keys, Tag, blog::deletion::post_deletion_event_builder};
+
+    #[test]
+    fn refresh_keeps_existing_posts_until_new_posts_are_available() {
+        let keys = Keys::generate();
+        let events = ["old post", "new post"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, content)| {
+                EventBuilder::long_form_text_note(content)
+                    .custom_created_at(Timestamp::from(100 + index as u64))
+                    .sign_with_keys(&keys)
+                    .unwrap()
+            });
+        let mut fetched = events.to_posts(Default::default());
+        let old_post = fetched.next().unwrap();
+        let new_post = fetched.next().unwrap();
+        let mut posts = vec![old_post.clone()];
+
+        assert!(!merge_post_list(&mut posts, Vec::new()));
+        assert_eq!(posts[0].id, old_post.id);
+        assert!(merge_post_list(&mut posts, vec![new_post.clone()]));
+        assert_eq!(
+            posts.iter().map(|post| post.id).collect::<Vec<_>>(),
+            vec![new_post.id, old_post.id]
+        );
+        assert!(!merge_post_list(&mut posts, vec![old_post]));
+        assert_eq!(posts.len(), 2);
+    }
 
     #[test]
     fn periodic_post_query_keeps_inclusive_watermark() {

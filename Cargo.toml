@@ -68,7 +68,7 @@ ssr = [
 static-export = ["ssr"]
 
 [profile.release]
-panic = "immediate-abort"
+panic = "unwind"
 
 # Defines a size-optimized profile for the WASM bundle in release mode
 [profile.wasm-release]

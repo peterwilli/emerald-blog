@@ -7,8 +7,20 @@ if `client-side-nostr-fetch` is passed, so new posts are added by SSR/server
 polling rather than by client-side list mutation.
 
 The current islands are interactive browser-only surfaces such as the admin
-publisher, comment composer, and art slider. Nostr publishing/comment actions
+publisher, comments section (including its composer), and art slider. Nostr publishing/comment actions
 continue to use WASM, while blog post rendering remains SSR-driven.
+
+Post pages render cached comments without waiting for Nostr. The server refreshes
+comments in the background at most once per minute per requested post, and the
+comments island checks the server cache every 15 seconds. A cold cache initially
+renders no comments; they appear after the first successful refresh. The comment
+cache resets when the server restarts.
+
+Post snapshots are saved to disk by default. On restart, the server serves the
+last snapshot immediately and refreshes it in the background, including when it
+is older than `EMERALD_POSTS_CACHE_TTL_SECS` (default: 86400). Set the TTL to `0`
+to disable disk caching. Set `EMERALD_POSTS_CACHE_PATH` to a file on a persistent
+volume to retain snapshots across container replacements.
 
 ## Tradeoffs
 

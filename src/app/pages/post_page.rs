@@ -275,7 +275,8 @@ fn author_fallback_key(author: &Author<'_>) -> String {
         .unwrap_or_else(|_| author.pubkey.to_hex())
 }
 
-#[component]
+#[cfg_attr(feature = "islands", island)]
+#[cfg_attr(not(feature = "islands"), component)]
 fn ApprovedComments(post_id: String) -> impl IntoView {
     cfg_if::cfg_if! {
         if #[cfg(all(
@@ -465,7 +466,14 @@ fn refresh_approved_comments(
     seeded_comment_ids: Vec<String>,
 ) {
     leptos::task::spawn_local(async move {
-        let Ok(comments) = fetch_approved_comments(post_id).await else {
+        cfg_if::cfg_if! {
+            if #[cfg(all(feature = "client-side-nostr-fetch", not(feature = "islands")))] {
+                let result = fetch_approved_comments(post_id).await;
+            } else {
+                let result = seed_approved_comments(post_id).await.map_err(|error| error.to_string());
+            }
+        }
+        let Ok(comments) = result else {
             return;
         };
 
@@ -492,8 +500,7 @@ fn refresh_approved_comments(
     });
 }
 
-#[cfg_attr(feature = "islands", island)]
-#[cfg_attr(not(feature = "islands"), component)]
+#[component]
 fn CommentComposer(post_id: String) -> impl IntoView {
     let (content, set_content) = signal(String::new());
     let (display_name, set_display_name) = signal(String::new());
@@ -600,10 +607,24 @@ fn CommentComposer(post_id: String) -> impl IntoView {
 pub async fn seed_approved_comments(
     post_id: String,
 ) -> Result<Vec<ApprovedComment>, ServerFnError> {
-    tokio::time::timeout(Duration::from_secs(15), fetch_approved_comments(post_id))
-        .await
-        .map_err(|_| ServerFnError::new("Comment loading timed out. Please try again."))?
-        .map_err(ServerFnError::new)
+    let id = EventId::from_hex(&post_id).map_err(ServerFnError::new)?;
+    if !crate::app::post_sync::POSTS_LIST
+        .read()
+        .iter()
+        .any(|post| post.id == id)
+    {
+        return Err(ServerFnError::new("Post not found."));
+    }
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "static-export")] {
+            tokio::time::timeout(Duration::from_secs(55), fetch_approved_comments(post_id))
+                .await
+                .map_err(|_| ServerFnError::new("Comment loading timed out."))?
+                .map_err(ServerFnError::new)
+        } else {
+            Ok(crate::app::comment_sync::cached_approved_comments(post_id))
+        }
+    }
 }
 
 #[cfg(any(feature = "ssr", feature = "hydrate"))]

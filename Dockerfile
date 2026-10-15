@@ -66,6 +66,7 @@ COPY --from=rust_builder --chown=65532:65532 /usr/local/share/emerald-blog-site 
 COPY --from=rust_builder --chown=65532:65532 /work/Cargo.toml /app/
 
 ENV RUST_LOG="info"
+ENV RUST_BACKTRACE="1"
 ENV LEPTOS_SITE_ADDR="0.0.0.0:8080"
 ENV LEPTOS_SITE_ROOT=./site
 EXPOSE 8080
