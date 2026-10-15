@@ -58,7 +58,7 @@
 
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
   .emerald-bg {
-    background: #09011b url("/emerald-background-static.png") center / cover no-repeat;
+    background: #09011b url("/emerald-background-static.webp") center / cover no-repeat;
   }
 
   .emerald-bg canvas {
@@ -80,8 +80,21 @@
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
 }
 
-.mobile-menu[hidden] {
+.mobile-navigation > summary {
+  list-style: none;
+}
+
+.mobile-navigation > summary::-webkit-details-marker {
   display: none;
+}
+
+.mobile-navigation .mobile-menu-close-icon,
+.mobile-navigation[open] .mobile-menu-open-icon {
+  display: none;
+}
+
+.mobile-navigation[open] .mobile-menu-close-icon {
+  display: block;
 }
 
 .mobile-menu-link {

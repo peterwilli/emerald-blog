@@ -12,6 +12,6 @@ The default options target `.emerald-bg`, load `/dflat.glb`, and update
 `#copyright-year`.
 
 Small screens (up to 768px) and touch-first devices use a still image of the
-emerald scene (`public/emerald-background-static.png`) instead of initializing
+emerald scene (`public/emerald-background-static.webp`) instead of initializing
 WebGL. The site's glass panels retain their backdrop blur over that image.
 

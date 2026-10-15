@@ -15,10 +15,6 @@ pub fn HeaderItem(link: &'static str, title: &'static str) -> impl IntoView {
 
 #[component]
 pub fn Header() -> impl IntoView {
-    let (menu_open, set_menu_open) = signal(false);
-    let toggle_menu = move |_| set_menu_open.update(|open| *open = !*open);
-    let close_menu = move |_| set_menu_open.set(false);
-
     view! {
         <header class="relative z-20">
             <nav class="container mx-auto px-4 py-3 md:py-6">
@@ -63,105 +59,60 @@ pub fn Header() -> impl IntoView {
                     </div>
                 </div>
 
-                // Mobile Navigation
-                <div class="relative md:hidden flex flex-col">
-                    <div class="flex justify-between items-center">
-                        <div class="logo-glow animate-float">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                xml:space="preserve"
-                                viewBox="0 0 131.443 144.521"
-                                class="w-20 h-auto"
-                            >
-                                <use href="#emerald-logo-shape"></use>
-                            </svg>
-                        </div>
-
-                        <button
-                            type="button"
-                            aria-label=move || if menu_open.get() { "Close menu" } else { "Open menu" }
-                            aria-expanded=move || menu_open.get().to_string()
-                            aria-controls="mobileMenu"
-                            on:click=toggle_menu
-                            class="inline-flex size-11 items-center justify-center rounded-md text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.45)] transition-colors duration-200 hover:text-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                        >
-                            // Hamburger Icon
-                            <svg
-                                class=move || {
-                                    if menu_open.get() {
-                                        "hidden w-8 h-8 transition-transform duration-300 transform"
-                                    } else {
-                                        "block w-8 h-8 transition-transform duration-300 transform"
-                                    }
-                                }
-                                id="hamburgerIcon"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M4 6h16M4 12h16M4 18h16"
-                                ></path>
-                            </svg>
-                            // Close Icon
-                            <svg
-                                class=move || {
-                                    if menu_open.get() {
-                                        "block w-8 h-8 transition-transform duration-300 transform"
-                                    } else {
-                                        "hidden w-8 h-8 transition-transform duration-300 transform"
-                                    }
-                                }
-                                id="closeIcon"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth="2"
-                                    d="M6 18L18 6M6 6l12 12"
-                                ></path>
-                            </svg>
-                        </button>
-                    </div>
-
-                    // Mobile Menu
-                    <div
-                        id="mobileMenu"
-                        class="mobile-menu"
-                        hidden=move || !menu_open.get()
-                    >
-                        <A
-                            href="/"
-                            on:click=close_menu
-                            attr:class="mobile-menu-link"
-                        >
-                            Home
-                        </A>
-                        <A
-                            href="/blog"
-                            on:click=close_menu
-                            attr:class="mobile-menu-link"
-                        >
-                            Blog
-                        </A>
-                        <A
-                            href="/art"
-                            on:click=close_menu
-                            attr:class="mobile-menu-link"
-                        >
-                            Art
-                        </A>
-                    </div>
-                </div>
+                <MobileNavigation />
             </nav>
         </header>
+    }
+}
+
+#[component]
+fn MobileNavigation() -> impl IntoView {
+    view! {
+        <div class="relative md:hidden flex items-center justify-between">
+            <div class="logo-glow animate-float">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    xml:space="preserve"
+                    viewBox="0 0 131.443 144.521"
+                    class="w-20 h-auto"
+                >
+                    <use href="#emerald-logo-shape"></use>
+                </svg>
+            </div>
+
+            <details class="mobile-navigation">
+                <summary
+                    aria-label="Toggle menu"
+                    aria-controls="mobileMenu"
+                    class="inline-flex size-11 cursor-pointer items-center justify-center rounded-md text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.45)] transition-colors duration-200 hover:text-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                >
+                    <svg
+                        class="mobile-menu-open-icon w-8 h-8"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                    <svg
+                        class="mobile-menu-close-icon w-8 h-8"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </summary>
+                <nav id="mobileMenu" class="mobile-menu" aria-label="Mobile navigation">
+                    <a href="/" class="mobile-menu-link" rel="external">Home</a>
+                    <a href="/blog" class="mobile-menu-link" rel="external">Blog</a>
+                    <a href="/art" class="mobile-menu-link" rel="external">Art</a>
+                </nav>
+            </details>
+        </div>
     }
 }
