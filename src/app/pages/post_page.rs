@@ -79,10 +79,11 @@ pub fn PostPage() -> impl IntoView {
                                     property="og:url"
                                     content=format!("https://emerald.show/post/{}", route_slug)
                                 />
-                                <Meta
-                                    property="og:image"
-                                    content="https://yourblog.com/image.jpg"
-                                />
+                                {post.featured_image.as_ref().map(|image| {
+                                    view! {
+                                        <Meta property="og:image" content=image.to_string() />
+                                    }
+                                })}
                                 <Meta property="og:site_name" content="Emerald Show" />
 
                                 <h1 class="text-2xl font-bold text-emerald mb-4">
