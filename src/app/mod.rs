@@ -211,7 +211,7 @@ cfg_if::cfg_if! {
         }
 
         fn post_ssr_mode() -> SsrMode {
-            SsrMode::Async
+            SsrMode::OutOfOrder
         }
 
         fn blog_category_ssr_mode() -> SsrMode {

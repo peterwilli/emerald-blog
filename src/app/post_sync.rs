@@ -20,7 +20,10 @@ cfg_if::cfg_if! {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
-        use libnostrblog::blog::fetch_posts::FetchPostExt;
+        use libnostrblog::{
+            blog::{fetch_posts::FetchPostExt, extensions::to_posts::ToPosts},
+            objects::post::Author, types::Authors, Event, Filter, Kind, Metadata,
+        };
         use once_cell::sync::Lazy;
         use parking_lot::RwLock;
         use std::{
@@ -88,9 +91,9 @@ pub async fn start_server_post_sync() {
         return;
     }
 
-    let blog = load_server_posts_once().await;
+    load_server_posts_once().await;
 
-    start_server_post_poll(blog);
+    start_server_post_poll();
 }
 
 #[cfg(feature = "ssr")]
@@ -108,30 +111,17 @@ pub async fn load_server_posts_once() -> Option<Blog<'static>> {
 }
 
 #[cfg(feature = "ssr")]
-fn start_server_post_poll(blog: Option<Blog<'static>>) {
-    let cooldown_secs = 60;
-    let cooldown = Duration::from_secs(cooldown_secs);
-
+fn start_server_post_poll() {
     tokio::task::spawn_local(async move {
-        let mut blog = blog;
+        let mut from = latest_post_timestamp();
 
         loop {
-            time::sleep(cooldown).await;
-
-            if blog.is_none() {
-                blog = blog_with_authors("refreshing posts").await;
-            }
-
-            let Some(active_blog) = blog.as_ref() else {
-                blog = blog_with_authors("refreshing author metadata").await;
-                continue;
-            };
-
-            if let Err(error) = active_blog.fetch_authors().await {
-                warn!("failed to refresh author metadata: {error:?}");
-                fetch_newer_posts(active_blog).await;
-            } else {
-                fetch_and_replace_posts(active_blog).await;
+            time::sleep(Duration::from_secs(60)).await;
+            if time::timeout(Duration::from_secs(35), fetch_newer_posts(&mut from))
+                .await
+                .is_err()
+            {
+                warn!("post sync timed out; keeping cached posts");
             }
         }
     });
@@ -150,24 +140,136 @@ async fn fetch_and_replace_posts(blog: &Blog<'_>) -> bool {
     debug!("fetched posts: {:?}", posts);
     replace_posts(posts);
 
-    write_cached_posts();
+    write_cached_posts().await;
     true
 }
 
 #[cfg(feature = "ssr")]
-async fn fetch_newer_posts(blog: &Blog<'_>) {
-    let from = latest_post_timestamp();
-    let posts = match blog.fetch_posts(from).await {
-        Ok(posts) => posts,
+async fn fetch_newer_posts(from: &mut Option<Timestamp>) {
+    let requested_at = Timestamp::now();
+    let client = get_nostr_client().await;
+    let events = match client
+        .fetch_events(post_update_filter(*from), Duration::from_secs(10))
+        .await
+    {
+        Ok(events) => events,
         Err(error) => {
             warn!("failed to fetch newer posts: {error:?}");
             return;
         }
     };
 
-    if merge_posts(posts) {
-        write_cached_posts();
+    *from = events
+        .iter()
+        .map(|event| event.created_at)
+        .chain(*from)
+        .max()
+        .or(Some(requested_at));
+    let authors: Authors = Default::default();
+    let author = POSTS_LIST
+        .read()
+        .first()
+        .map(|post| post.author.clone())
+        .unwrap_or_else(|| Author::from_pubkey(Arc::new(OWNER_PUBKEY)));
+    authors.write().insert(author.pubkey.clone(), author);
+    let posts = events.into_iter().to_posts(authors).collect();
+    let mut changed = merge_posts(posts);
+    match client
+        .fetch_events(
+            Filter::new().author(OWNER_PUBKEY).kind(Kind::EventDeletion),
+            Duration::from_secs(10),
+        )
+        .await
+    {
+        Ok(events) => {
+            let mut posts = POSTS_LIST.write();
+            let previous_len = posts.len();
+            posts.retain(|post| !events.iter().any(|event| deletes_post(event, post)));
+            changed |= posts.len() != previous_len;
+        }
+        Err(error) => warn!("failed to refresh post deletions: {error:?}"),
     }
+
+    match client
+        .fetch_events(
+            Filter::new().author(OWNER_PUBKEY).kind(Kind::Metadata),
+            Duration::from_secs(10),
+        )
+        .await
+    {
+        Ok(events) => {
+            if let Some(metadata) = events
+                .iter()
+                .max_by_key(|event| event.created_at)
+                .and_then(|event| serde_json::from_str::<Metadata>(&event.content).ok())
+            {
+                let author = Author {
+                    pubkey: Arc::new(OWNER_PUBKEY),
+                    username: metadata.name.map(Into::into),
+                    display_name: metadata.display_name.map(Into::into),
+                    about: metadata.about.map(Into::into),
+                    picture: metadata
+                        .picture
+                        .as_deref()
+                        .or_else(|| {
+                            metadata
+                                .custom
+                                .get("image")
+                                .and_then(|value| value.as_str())
+                        })
+                        .and_then(|value| value.parse().ok()),
+                };
+                let mut posts = POSTS_LIST.write();
+                for post in posts
+                    .iter_mut()
+                    .filter(|post| post.author.pubkey == author.pubkey)
+                {
+                    if post.author.username != author.username
+                        || post.author.display_name != author.display_name
+                        || post.author.about != author.about
+                        || post.author.picture != author.picture
+                    {
+                        post.author = author.clone();
+                        changed = true;
+                    }
+                }
+            }
+        }
+        Err(error) => warn!("failed to refresh cached post authors: {error:?}"),
+    }
+
+    if changed {
+        write_cached_posts().await;
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn post_update_filter(from: Option<Timestamp>) -> Filter {
+    let filter = Filter::new()
+        .author(OWNER_PUBKEY)
+        .kind(Kind::LongFormTextNote);
+    match from {
+        Some(from) => filter.since(from),
+        None => filter,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn deletes_post(event: &Event, post: &Post<'_>) -> bool {
+    let requested_kinds = event
+        .tags
+        .iter()
+        .filter_map(|tag| {
+            let [key, value, ..] = tag.as_slice() else {
+                return None;
+            };
+            (key == "k").then_some(value.as_str())
+        })
+        .collect::<Vec<_>>();
+    event.kind == Kind::EventDeletion
+        && event.pubkey == *post.author.pubkey
+        && event.tags.event_ids().any(|id| *id == post.id)
+        && (requested_kinds.is_empty() || requested_kinds.contains(&"30023"))
 }
 
 #[cfg(any(
@@ -326,7 +428,14 @@ fn load_cached_posts() -> bool {
 }
 
 #[cfg(feature = "ssr")]
-fn write_cached_posts() {
+async fn write_cached_posts() {
+    if let Err(error) = tokio::task::spawn_blocking(write_cached_posts_blocking).await {
+        warn!("failed to write post cache: {error:?}");
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn write_cached_posts_blocking() {
     if posts_cache_ttl().is_none() {
         return;
     }
@@ -370,4 +479,51 @@ fn posts_cache_path() -> PathBuf {
     env::var_os("EMERALD_POSTS_CACHE_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| env::temp_dir().join("emerald-blog-v3").join("posts.json"))
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::*;
+    use libnostrblog::{EventBuilder, Keys, Tag, blog::deletion::post_deletion_event_builder};
+
+    #[test]
+    fn periodic_post_query_keeps_inclusive_watermark() {
+        let filter = serde_json::to_value(post_update_filter(Some(Timestamp::from(123)))).unwrap();
+        assert_eq!(filter["since"], 123);
+        assert_eq!(filter["kinds"], serde_json::json!([30023]));
+        assert_eq!(
+            filter["authors"],
+            serde_json::json!([OWNER_PUBKEY.to_hex()])
+        );
+    }
+
+    #[test]
+    fn incremental_deletions_remove_older_posts_only_for_matching_author_and_kind() {
+        let keys = Keys::generate();
+        let event = EventBuilder::long_form_text_note("old post")
+            .custom_created_at(Timestamp::from(100))
+            .sign_with_keys(&keys)
+            .unwrap();
+        let authors: Authors = Default::default();
+        let post = vec![event].into_iter().to_posts(authors).next().unwrap();
+        let deletion = post_deletion_event_builder(post.id, Kind::LongFormTextNote, "remove")
+            .custom_created_at(Timestamp::from(200))
+            .sign_with_keys(&keys)
+            .unwrap();
+        assert!(deletes_post(&deletion, &post));
+
+        let other_author = post_deletion_event_builder(post.id, Kind::LongFormTextNote, "remove")
+            .sign_with_keys(&Keys::generate())
+            .unwrap();
+        assert!(!deletes_post(&other_author, &post));
+        let other_kind = post_deletion_event_builder(post.id, Kind::TextNote, "remove")
+            .sign_with_keys(&keys)
+            .unwrap();
+        assert!(!deletes_post(&other_kind, &post));
+        let no_kind = EventBuilder::new(Kind::EventDeletion, "remove")
+            .tags([Tag::event(post.id)])
+            .sign_with_keys(&keys)
+            .unwrap();
+        assert!(deletes_post(&no_kind, &post));
+    }
 }

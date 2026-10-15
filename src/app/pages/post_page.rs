@@ -45,6 +45,7 @@ pub fn PostPage() -> impl IntoView {
     let live_posts = state.live_posts.clone();
 
     view! {
+        <PostMetadata route_slug=route_slug.clone() />
         <div class="glass rounded-xl p-6 transition-all duration-300 post-card">
             <Suspense fallback=move || {
                 view! { <p>"Loading..."</p> }
@@ -68,24 +69,7 @@ pub fn PostPage() -> impl IntoView {
                                 })
                                 .cloned()
                                 .map(|post| {
-                                    let route_slug = route_slug.clone();
-
                             view! {
-                                <Title text=format!("{} - Emerald Show", post.title) />
-                                <Meta property="og:title" content=post.title.to_string() />
-                                <Meta property="og:description" content=post.excerpt.to_string() />
-                                <Meta property="og:type" content="article" />
-                                <Meta
-                                    property="og:url"
-                                    content=format!("https://emerald.show/post/{}", route_slug)
-                                />
-                                {post.featured_image.as_ref().map(|image| {
-                                    view! {
-                                        <Meta property="og:image" content=image.to_string() />
-                                    }
-                                })}
-                                <Meta property="og:site_name" content="Emerald Show" />
-
                                 <h1 class="text-2xl font-bold text-emerald mb-4">
                                     {post.title.clone()}
                                 </h1>
@@ -128,6 +112,41 @@ pub fn PostPage() -> impl IntoView {
                 }}
             </Suspense>
         </div>
+    }
+}
+
+#[component]
+fn PostMetadata(route_slug: String) -> impl IntoView {
+    #[cfg(not(feature = "ssr"))]
+    let state = use_context::<AppState>().unwrap();
+    let metadata_slug = route_slug.clone();
+    let post = move || {
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "ssr")] {
+                crate::app::post_sync::POSTS_LIST.read().iter()
+                    .find(|post| post_slug(post) == metadata_slug || title_slug(&post.title) == metadata_slug)
+                    .cloned()
+            } else {
+                state.posts.try_get().flatten().and_then(|posts| posts.into_iter()
+                    .find(|post| post_slug(post) == metadata_slug || title_slug(&post.title) == metadata_slug))
+            }
+        }
+    };
+    view! {
+        {move || post().map(|post| view! {
+            <Title text=format!("{} - Emerald Show", post.title) />
+            <Meta property="og:title" content=post.title.to_string() />
+            <Meta property="og:description" content=post.excerpt.to_string() />
+            <Meta property="og:type" content="article" />
+            <Meta
+                property="og:url"
+                content=format!("https://emerald.show/post/{}", route_slug)
+            />
+            {post.featured_image.as_ref().map(|image| view! {
+                <Meta property="og:image" content=image.to_string() />
+            })}
+            <Meta property="og:site_name" content="Emerald Show" />
+        })}
     }
 }
 
@@ -581,8 +600,9 @@ fn CommentComposer(post_id: String) -> impl IntoView {
 pub async fn seed_approved_comments(
     post_id: String,
 ) -> Result<Vec<ApprovedComment>, ServerFnError> {
-    fetch_approved_comments(post_id)
+    tokio::time::timeout(Duration::from_secs(15), fetch_approved_comments(post_id))
         .await
+        .map_err(|_| ServerFnError::new("Comment loading timed out. Please try again."))?
         .map_err(ServerFnError::new)
 }
 
