@@ -123,10 +123,16 @@ fn start_server_post_poll(blog: Option<Blog<'static>>) {
             }
 
             let Some(active_blog) = blog.as_ref() else {
+                blog = blog_with_authors("refreshing author metadata").await;
                 continue;
             };
 
-            fetch_newer_posts(active_blog).await;
+            if let Err(error) = active_blog.fetch_authors().await {
+                warn!("failed to refresh author metadata: {error:?}");
+                fetch_newer_posts(active_blog).await;
+            } else {
+                fetch_and_replace_posts(active_blog).await;
+            }
         }
     });
 }
@@ -177,8 +183,7 @@ async fn blog_with_authors(action: &str) -> Option<Blog<'static>> {
     let blog = Blog::new(client.clone(), vec![OWNER_PUBKEY]);
 
     if let Err(error) = blog.fetch_authors().await {
-        warn!("failed to fetch authors before {action}: {error:?}");
-        return None;
+        warn!("failed to fetch authors before {action}; continuing with key fallback: {error:?}");
     }
 
     Some(blog)
@@ -234,7 +239,22 @@ cfg_if::cfg_if! {
 
                 loop {
                     stream_newer_client_posts(state.clone()).await;
+                    refresh_client_author_metadata(state.clone()).await;
                     gloo_timers::future::sleep(cooldown).await;
+                }
+            });
+        }
+
+        async fn refresh_client_author_metadata(state: AppState) {
+            let Some(blog) = blog_with_authors("refreshing browser author metadata").await else {
+                return;
+            };
+            let authors = blog.authors.read().clone();
+            state.live_posts.update(|posts| {
+                for post in posts {
+                    if let Some(author) = authors.get(&post.author.pubkey) {
+                        post.author = (*author).clone();
+                    }
                 }
             });
         }
