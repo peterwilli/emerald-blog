@@ -56,6 +56,14 @@ export function initEmeraldBackground(options = {}) {
     copyrightYear.textContent = new Date().getFullYear().toString();
   }
 
+  // Avoid animated WebGL beneath glass panels on mobile GPU compositors.
+  if (
+    window.matchMedia("(max-width: 768px), (hover: none) and (pointer: coarse)")
+      .matches
+  ) {
+    return;
+  }
+
   init();
 }
 

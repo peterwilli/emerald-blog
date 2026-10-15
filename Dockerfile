@@ -34,9 +34,9 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 RUN --mount=type=cache,target=/work/core-js/.parcel-cache \
     pnpm build:core-js
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/cargo-target \
+RUN --mount=type=cache,id=emerald-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=emerald-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=emerald-cargo-target-${TARGETARCH},target=/cargo-target,sharing=locked \
     case ${TARGETARCH} in \
         arm64) \
             echo "Compiling for ARM64" && \

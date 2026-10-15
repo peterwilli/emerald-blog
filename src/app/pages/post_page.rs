@@ -1,7 +1,7 @@
 use crate::app::{
     AppState,
     components::media_display::MediaDisplay,
-    markdown::render_markdown,
+    markdown::{contains_image, render_markdown},
     nostr_browser,
     utils::{post_slug, title_slug, to_date_string},
 };
@@ -90,15 +90,9 @@ pub fn PostPage() -> impl IntoView {
                                     {post.title.clone()}
                                 </h1>
                                 <PostAuthor author=post.author.clone() created_at=to_date_string(post.created_at) />
-                                <div class="mt-4 flex flex-col gap-5 md:flex-row md:items-start">
-                                    <div class="prose prose-emerald max-w-none min-w-0 flex-1">
-                                        <div
-                                            class="markdown-body"
-                                            inner_html=render_markdown(&post.content)
-                                        ></div>
-                                    </div>
                                     {post
                                         .featured_image
+                                        .filter(|image| !contains_image(&post.content, image.as_ref()))
                                         .map(|image| {
                                             let image_url = image.to_string();
                                             let image_href = image_url.clone();
@@ -107,17 +101,25 @@ pub fn PostPage() -> impl IntoView {
                                                     href=image_href
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    class="block w-full md:w-72 lg:w-80 flex-none rounded-xl overflow-hidden border border-white/10 transition-opacity hover:opacity-90"
+                                                    class="post-featured-image"
                                                     title="Open larger image"
                                                 >
                                                     <MediaDisplay
                                                         src=image_url
-                                                        class="w-full max-h-64 object-cover"
+                                                        class="post-featured-media"
                                                         alt=post.title.to_string()
                                                     />
                                                 </a>
                                             }
                                         })}
+                                <div class="mt-6">
+                                    <div class="prose prose-emerald max-w-none min-w-0">
+                                        <div
+                                            class="markdown-body"
+                                            inner_html=render_markdown(&post.content)
+                                        ></div>
+                                    </div>
+
                                 </div>
                                 <ApprovedComments post_id=post.id.to_hex() />
                             }
@@ -318,19 +320,12 @@ fn ApprovedComments(post_id: String) -> impl IntoView {
             }
             .into_any()
         } else {
-            #[cfg(feature = "hydrate")]
-            let comments = {
-                let comments_post_id = post_id.clone();
-                LocalResource::new(move || {
-                    let comments_post_id = comments_post_id.clone();
-                    async move { fetch_approved_comments(comments_post_id).await }
-                })
-            };
-            #[cfg(not(feature = "hydrate"))]
-            let comments = {
-                let comments_post_id = post_id.clone();
-                ArcOnceResource::new(async move { fetch_approved_comments(comments_post_id).await })
-            };
+            let comments_post_id = post_id.clone();
+            let comments = ArcOnceResource::new(async move {
+                seed_approved_comments(comments_post_id)
+                    .await
+                    .map_err(|error| error.to_string())
+            });
             let live_comments = RwSignal::new(Vec::<ApprovedComment>::new());
             #[cfg(feature = "hydrate")]
             let refresh_started = RwSignal::new(false);
@@ -580,6 +575,15 @@ fn CommentComposer(post_id: String) -> impl IntoView {
             </div>
         </div>
     }
+}
+
+#[server]
+pub async fn seed_approved_comments(
+    post_id: String,
+) -> Result<Vec<ApprovedComment>, ServerFnError> {
+    fetch_approved_comments(post_id)
+        .await
+        .map_err(ServerFnError::new)
 }
 
 #[cfg(any(feature = "ssr", feature = "hydrate"))]

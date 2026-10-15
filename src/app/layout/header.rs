@@ -20,8 +20,8 @@ pub fn Header() -> impl IntoView {
     let close_menu = move |_| set_menu_open.set(false);
 
     view! {
-        <header class="relative z-10">
-            <nav class="container mx-auto px-4 py-6">
+        <header class="relative z-20">
+            <nav class="container mx-auto px-4 py-3 md:py-6">
                 // Desktop/Tablet Navigation
                 <div class="flex items-center justify-between max-md:absolute max-md:size-0 max-md:overflow-hidden max-md:opacity-0 max-md:pointer-events-none md:relative">
                     <div class="flex space-x-4">
@@ -64,7 +64,7 @@ pub fn Header() -> impl IntoView {
                 </div>
 
                 // Mobile Navigation
-                <div class="md:hidden flex flex-col">
+                <div class="relative md:hidden flex flex-col">
                     <div class="flex justify-between items-center">
                         <div class="logo-glow animate-float">
                             <svg
@@ -135,32 +135,27 @@ pub fn Header() -> impl IntoView {
                     // Mobile Menu
                     <div
                         id="mobileMenu"
-                        class=move || {
-                            if menu_open.get() {
-                                "mt-4 pb-4 space-y-2 overflow-hidden transition-all duration-300 ease-in-out max-h-40 opacity-100"
-                            } else {
-                                "mt-4 pb-0 space-y-2 overflow-hidden transition-all duration-300 ease-in-out max-h-0 opacity-0 pointer-events-none"
-                            }
-                        }
+                        class="mobile-menu"
+                        hidden=move || !menu_open.get()
                     >
                         <A
                             href="/"
                             on:click=close_menu
-                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                            attr:class="mobile-menu-link"
                         >
                             Home
                         </A>
                         <A
                             href="/blog"
                             on:click=close_menu
-                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                            attr:class="mobile-menu-link"
                         >
                             Blog
                         </A>
                         <A
                             href="/art"
                             on:click=close_menu
-                            attr:class="block px-4 py-2 text-white/90 bg-emerald-dark bg-opacity-30 rounded-lg drop-shadow-[0_1px_2px_rgba(0,0,0,0.75)] transition-all duration-300 hover:bg-opacity-50 hover:text-gold"
+                            attr:class="mobile-menu-link"
                         >
                             Art
                         </A>

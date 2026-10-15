@@ -92,7 +92,7 @@ pub fn App() -> impl IntoView {
         <Router>
             <PostsSync />
             <Header />
-            <main class="relative z-10 container mx-auto px-4 py-8 max-w-8xl">
+            <main class="relative z-10 container mx-auto px-4 pt-3 pb-8 md:pt-8 max-w-8xl">
                 <Routes fallback=|| "Not found.">
                     <Route path=StaticSegment("") view=HomePage ssr=page_ssr_mode() />
                     <Route path=path!("/post/:slug") view=PostPage ssr=post_ssr_mode() />

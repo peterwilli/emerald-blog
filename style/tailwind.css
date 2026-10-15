@@ -56,8 +56,46 @@
   color: rgba(255, 255, 255, 0.94);
 }
 
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  .emerald-bg {
+    background: #09011b url("/emerald-background-static.png") center / cover no-repeat;
+  }
+
+  .emerald-bg canvas {
+    display: none;
+  }
+}
+
 .social-icon {
   transition: all 0.3s ease;
+}
+
+.mobile-menu {
+  position: absolute;
+  inset: calc(100% + 0.5rem) 0 auto;
+  padding: 0.5rem;
+  background: #160b29;
+  border: 1px solid rgba(80, 200, 120, 0.35);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-menu[hidden] {
+  display: none;
+}
+
+.mobile-menu-link {
+  display: block;
+  padding: 0.75rem 1rem;
+  color: #fff;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.mobile-menu-link:hover,
+.mobile-menu-link:focus-visible {
+  background: #293321;
+  color: #f2c94c;
 }
 
 .social-icon:hover {
@@ -68,6 +106,20 @@
 .post-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 5px 15px rgba(80, 200, 120, 0.3);
+}
+
+@media (width < 48rem) {
+  .post-card {
+    margin-inline: -1rem;
+    border-inline: 0;
+    border-radius: 0;
+    min-width: 0;
+  }
+
+  .post-card:not(.post-card-link),
+  .post-card-link > .p-6 {
+    padding-inline: 1rem;
+  }
 }
 
 .post-card h1,
@@ -89,6 +141,25 @@
 
 .post-card a:hover {
   color: #f2c94c;
+}
+
+.post-featured-image {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.5rem auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+}
+
+.post-featured-media {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(65svh, 36rem);
+  object-fit: contain;
 }
 
 .art-slider {
